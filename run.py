@@ -1,0 +1,333 @@
+#!/usr/bin/env python3
+"""Vnyl launcher.
+
+One command to run Vnyl on your machine, so you don't have to remember the
+npm / vsce / code invocations. Run with no arguments to just open Vnyl in the
+browser, or pass a subcommand:
+
+    python run.py dev              # same as no arguments: Vnyl in the browser
+                                   #   (closing the app window stops the server)
+    python run.py menu             # the interactive menu of everything below
+    python run.py ext [file.pdf]   # build + open the VS Code extension (dev host)
+    python run.py build-ext        # just build the VS Code extension
+    python run.py package          # build a distributable .vsix
+    python run.py install          # install the .vsix into your VS Code
+    python run.py desktop          # the native desktop app (needs Rust)
+    python run.py doctor           # check prerequisites
+
+Stdlib only; works with any Python 3.8+.
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import webbrowser
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent
+EXT = REPO / "extensions" / "vscode"
+BASE_URL = "https://github.com/owenpkent/folio/raw/main/extensions/vscode"
+# Vite is pinned to this port (strictPort) in vite.config.ts.
+DEV_PORT = 1420
+DEV_URL = f"http://localhost:{DEV_PORT}/"
+
+
+# --- small helpers ---------------------------------------------------------
+
+def tool(name: str) -> str | None:
+    """Resolve an executable, tolerating Windows .cmd/.exe shims."""
+    return shutil.which(name)
+
+
+def need(name: str) -> str:
+    path = tool(name)
+    if not path:
+        sys.exit(f"error: '{name}' not found on PATH. Run `python run.py doctor`.")
+    return path
+
+
+def run(cmd: list[str], *, cwd: Path = REPO) -> int:
+    """Run a command, streaming its output; return its exit code."""
+    print(f"\n$ {' '.join(cmd)}  (in {cwd})\n")
+    return subprocess.run(cmd, cwd=str(cwd)).returncode
+
+
+def latest_vsix() -> Path | None:
+    vsixes = sorted(EXT.glob("*.vsix"), key=lambda p: p.stat().st_mtime, reverse=True)
+    return vsixes[0] if vsixes else None
+
+
+def find_browser() -> str | None:
+    """Locate a Chromium-based browser (Chrome/Edge/Brave) for app-window mode.
+
+    App mode lets us own the window, so closing it can stop the dev server.
+    """
+    override = os.environ.get("BROWSER_PATH")
+    if override and Path(override).exists():
+        return override
+    candidates = [
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
+    ]
+    for c in candidates:
+        if Path(c).exists():
+            return c
+    for name in ("chrome", "google-chrome", "chromium", "msedge", "brave"):
+        found = shutil.which(name)
+        if found:
+            return found
+    return None
+
+
+def kill_tree(proc: subprocess.Popen) -> None:
+    """Terminate a process and its children (npm spawns node/vite underneath)."""
+    if proc.poll() is not None:
+        return
+    if sys.platform == "win32":
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+            capture_output=True,
+        )
+    else:
+        proc.terminate()
+
+
+def wait_for_port(host: str, port: int, timeout: float = 90.0) -> bool:
+    """Return True once something is listening on host:port, else False on timeout.
+
+    Uses create_connection against the hostname so it matches however the browser
+    resolves it: Vite may bind IPv6 (::1) or IPv4 (127.0.0.1), and checking only
+    one would miss the other.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=1):
+                return True
+        except OSError:
+            time.sleep(0.4)
+    return False
+
+
+# --- actions ---------------------------------------------------------------
+
+def cmd_doctor(_args) -> int:
+    checks = [
+        ("node", "Node.js (required for everything)"),
+        ("npm", "npm (install deps, run the app)"),
+        ("code", "VS Code CLI (extension dev host, install)"),
+        ("cargo", "Rust/Cargo (only for the native desktop app)"),
+    ]
+    print("Vnyl prerequisites:\n")
+    for name, desc in checks:
+        path = tool(name)
+        mark = "OK " if path else "-- "
+        print(f"  [{mark}] {name:6s} {desc}")
+        if path:
+            print(f"         {path}")
+    deps = (REPO / "node_modules").is_dir()
+    print(f"\n  [{'OK ' if deps else '-- '}] node_modules {'installed' if deps else 'MISSING (run: npm install)'}")
+    return 0
+
+
+def ensure_deps() -> None:
+    if not (REPO / "node_modules").is_dir():
+        print("node_modules missing; installing dependencies first...")
+        if run([need("npm"), "install"]) != 0:
+            sys.exit("npm install failed.")
+
+
+def cmd_dev(_args) -> int:
+    """Vnyl in the browser via the Vite dev server (no Rust needed).
+
+    If a Chromium browser is available, Vnyl opens in a dedicated app window and
+    the dev server stops automatically when that window is closed. Otherwise it
+    opens in your default browser and runs until you press Ctrl+C.
+    """
+    ensure_deps()
+    server = subprocess.Popen([need("npm"), "run", "dev"], cwd=str(REPO))
+    browser = find_browser()
+
+    if browser:
+        print(f"Starting Vnyl; the dev server will stop when you close the app window.\n")
+
+        def app_window() -> None:
+            if not wait_for_port("localhost", DEV_PORT):
+                print(f"\n(Server did not come up; open {DEV_URL} manually.)")
+                return
+            profile = tempfile.mkdtemp(prefix="folio_win_")
+            win = subprocess.Popen(
+                [browser, f"--app={DEV_URL}", f"--user-data-dir={profile}",
+                 "--new-window", "--no-first-run", "--no-default-browser-check"]
+            )
+            win.wait()  # blocks until the user closes the app window
+            print("\nApp window closed; stopping the dev server.")
+            kill_tree(server)
+            shutil.rmtree(profile, ignore_errors=True)
+
+        threading.Thread(target=app_window, daemon=True).start()
+        try:
+            server.wait()
+        except KeyboardInterrupt:
+            kill_tree(server)
+        return 0
+
+    # No Chromium browser: open a default-browser tab; server runs until Ctrl+C.
+    print(f"Starting the Vite dev server; opening {DEV_URL} when it is ready.")
+    print("Press Ctrl+C to stop.\n")
+
+    def open_when_ready() -> None:
+        if wait_for_port("localhost", DEV_PORT):
+            webbrowser.open(DEV_URL)
+        else:
+            print(f"\n(Server did not come up in time; open {DEV_URL} manually.)")
+
+    threading.Thread(target=open_when_ready, daemon=True).start()
+    try:
+        return server.wait()
+    except KeyboardInterrupt:
+        kill_tree(server)
+        return 0
+
+
+def cmd_build_ext(_args) -> int:
+    ensure_deps()
+    return run([need("node"), "build.mjs"], cwd=EXT)
+
+
+def cmd_ext(args) -> int:
+    """Build the extension and open it in a VS Code Extension Development Host."""
+    if cmd_build_ext(args) != 0:
+        return 1
+    code = need("code")
+    cmd = [code, "--new-window", f"--extensionDevelopmentPath={EXT}"]
+    pdf = getattr(args, "pdf", None)
+    if pdf:
+        p = Path(pdf).resolve()
+        if not p.exists():
+            sys.exit(f"error: PDF not found: {p}")
+        cmd.append(str(p))
+    print("Launching VS Code Extension Development Host...")
+    if pdf:
+        print("The PDF should open in the Vnyl custom editor.")
+    else:
+        print("Open any .pdf in the new window to view it with Vnyl.")
+    return run(cmd, cwd=EXT)
+
+
+def cmd_package(_args) -> int:
+    if cmd_build_ext(_args) != 0:
+        return 1
+    npx = need("npx")
+    return run(
+        [npx, "--yes", "@vscode/vsce", "package", "--no-dependencies",
+         "--baseContentUrl", BASE_URL, "--baseImagesUrl", BASE_URL],
+        cwd=EXT,
+    )
+
+
+def cmd_install(_args) -> int:
+    vsix = latest_vsix()
+    if not vsix:
+        print("No .vsix found; building one first...")
+        if cmd_package(_args) != 0:
+            return 1
+        vsix = latest_vsix()
+        if not vsix:
+            sys.exit("packaging did not produce a .vsix.")
+    print(f"Installing {vsix.name} into VS Code.")
+    print("Note: this makes Vnyl your default PDF viewer in VS Code.")
+    return run([need("code"), "--install-extension", str(vsix)], cwd=EXT)
+
+
+def cmd_desktop(_args) -> int:
+    """The native desktop app via Tauri (requires Rust)."""
+    if not tool("cargo"):
+        print("Rust/Cargo is not installed, which the native desktop app needs.")
+        print("Install it from https://rustup.rs, then re-run. Meanwhile, try:")
+        print("  python run.py dev     (browser)   or   python run.py ext (VS Code)")
+        return 1
+    ensure_deps()
+    return run([need("npm"), "run", "tauri", "dev"])
+
+
+# --- interactive menu ------------------------------------------------------
+
+MENU = [
+    ("Browser (Vite dev server)", cmd_dev),
+    ("VS Code extension (dev host)", cmd_ext),
+    ("Build the VS Code extension", cmd_build_ext),
+    ("Package a .vsix", cmd_package),
+    ("Install the .vsix into VS Code", cmd_install),
+    ("Native desktop app (needs Rust)", cmd_desktop),
+    ("Check prerequisites", cmd_doctor),
+]
+
+
+def interactive() -> int:
+    print("How do you want to run Vnyl?\n")
+    for i, (label, _) in enumerate(MENU, 1):
+        print(f"  {i}. {label}")
+    print("  0. Quit")
+    try:
+        choice = input("\nChoose [1]: ").strip() or "1"
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return 0
+    if choice == "0":
+        return 0
+    try:
+        _, fn = MENU[int(choice) - 1]
+    except (ValueError, IndexError):
+        print("Invalid choice.")
+        return 1
+    return fn(argparse.Namespace(pdf=None))
+
+
+# --- entrypoint ------------------------------------------------------------
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Run Vnyl (browser, VS Code extension, or desktop).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    sub = parser.add_subparsers(dest="command")
+    sub.add_parser("dev", help="Vnyl in the browser (Vite dev server); the default")
+    sub.add_parser("menu", help="interactive menu of every way to run Vnyl")
+    p_ext = sub.add_parser("ext", help="build + open the VS Code extension dev host")
+    p_ext.add_argument("pdf", nargs="?", help="a PDF to open in the dev host")
+    sub.add_parser("build-ext", help="build the VS Code extension")
+    sub.add_parser("package", help="build a distributable .vsix")
+    sub.add_parser("install", help="install the .vsix into VS Code")
+    sub.add_parser("desktop", help="the native desktop app (needs Rust)")
+    sub.add_parser("doctor", help="check prerequisites")
+
+    args = parser.parse_args()
+    dispatch = {
+        "dev": cmd_dev,
+        "menu": lambda _a: interactive(),
+        "ext": cmd_ext,
+        "build-ext": cmd_build_ext,
+        "package": cmd_package,
+        "install": cmd_install,
+        "desktop": cmd_desktop,
+        "doctor": cmd_doctor,
+    }
+    if args.command is None:
+        return cmd_dev(args)
+    return dispatch[args.command](args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

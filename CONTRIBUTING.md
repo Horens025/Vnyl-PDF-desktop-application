@@ -1,0 +1,455 @@
+# Contributing to Vnyl
+
+First off, thank you for taking the time to contribute! Vnyl is a
+community-driven, MIT-licensed PDF viewer that aims for Adobe Acrobat-caliber
+quality on the desktop. Whether you are fixing a typo, filing a bug, building a
+plugin, or landing a major feature, you are welcome here.
+
+This guide explains how to set up your environment, how we work, and what we
+expect from a pull request. If anything is unclear, open a
+[Discussion](https://github.com/owenpkent/folio/discussions) and we will help.
+
+---
+
+## Table of contents
+
+- [Code of Conduct](#code-of-conduct)
+- [Ways to contribute](#ways-to-contribute)
+- [Development setup](#development-setup)
+- [Project layout](#project-layout)
+- [Branching and pull request workflow](#branching-and-pull-request-workflow)
+- [Commit messages (Conventional Commits)](#commit-messages-conventional-commits)
+- [Developer Certificate of Origin (DCO sign-off)](#developer-certificate-of-origin-dco-sign-off)
+- [Code style](#code-style)
+- [Testing expectations](#testing-expectations)
+- [Dependencies](#dependencies)
+- [Proposing plugins and AI features](#proposing-plugins-and-ai-features)
+- [Good first issues](#good-first-issues)
+- [Review process](#review-process)
+- [License](#license)
+
+---
+
+## Code of Conduct
+
+This project and everyone participating in it is governed by the
+[Vnyl Code of Conduct](./CODE_OF_CONDUCT.md). By participating, you are
+expected to uphold this code. Please report unacceptable behavior to
+Owenpkent@gmail.com.
+
+---
+
+## Ways to contribute
+
+You do not have to write code to make a difference:
+
+- **Report bugs** using the bug report issue form.
+- **Request features** using the feature request issue form.
+- **Improve documentation**, examples, or tutorials.
+- **Triage issues**: reproduce reports, add detail, suggest labels.
+- **Review pull requests** and try out branches.
+- **Build plugins** or prototype AI-assisted features (see below).
+- **Fix code**: start with a [good first issue](#good-first-issues).
+
+---
+
+## Development setup
+
+Vnyl is a [Tauri 2](https://tauri.app) desktop app: a Rust backend with a
+React 19 + TypeScript 5 frontend built by Vite 8, rendering PDFs with
+[PDF.js](https://mozilla.github.io/pdf.js/) and managing state with
+[Zustand](https://github.com/pmndrs/zustand).
+
+For the complete, step-by-step setup (including platform prerequisites and the
+Rust/Tauri toolchain), follow **[docs/getting-started.md](./docs/getting-started.md)**.
+The short version:
+
+### Prerequisites
+
+- **Node.js >= 22.22.2** (CI runs on 22 and 24) and **npm**.
+- **Rust (stable)** via [rustup](https://rustup.rs/).
+- Tauri's OS prerequisites. On Debian/Ubuntu Linux:
+
+  ```bash
+  sudo apt-get update
+  sudo apt-get install -y \
+    libwebkit2gtk-4.1-dev \
+    libsoup-3.0-dev \
+    libjavascriptcoregtk-4.1-dev \
+    libayatana-appindicator3-dev \
+    librsvg2-dev \
+    patchelf \
+    build-essential \
+    curl wget file \
+    libssl-dev \
+    libgtk-3-dev
+  ```
+
+  See the [Tauri prerequisites guide](https://v2.tauri.app/start/prerequisites/)
+  for macOS and Windows.
+
+### Install and run
+
+```bash
+git clone https://github.com/owenpkent/folio.git
+cd folio
+npm ci                 # install exact dependencies from the lockfile
+npm run tauri dev      # launch the desktop app with hot reload
+```
+
+Other useful scripts:
+
+| Script                 | What it does                              |
+| ---------------------- | ----------------------------------------- |
+| `npm run dev`          | Vite dev server (frontend only)           |
+| `npm run build`        | Production frontend build                 |
+| `npm run preview`      | Preview the production build              |
+| `npm run tauri`        | Run the Tauri CLI                         |
+| `npm run lint`         | ESLint over the codebase                  |
+| `npm run format`       | Prettier formatting                       |
+| `npm run typecheck`    | TypeScript type checking                  |
+| `npm run test`         | Vitest unit tests                         |
+| `npm run test:e2e`     | Playwright end-to-end tests               |
+
+---
+
+## Project layout
+
+A quick map so you know where things live:
+
+- `src/` - React + TypeScript frontend (components, Zustand stores, PDF.js glue).
+- `src-tauri/` - Rust backend, Tauri commands, and app configuration.
+- `docs/` - documentation, including `getting-started.md`.
+- `.github/` - issue forms, PR template, CI workflows, and automation.
+
+---
+
+## Branching and pull request workflow
+
+1. **Fork** the repository and clone your fork.
+2. **Create a branch** off `main` with a descriptive name. We like the
+   `type/short-description` convention, which mirrors our commit types:
+
+   ```bash
+   git switch -c feat/thumbnail-sidebar
+   git switch -c fix/text-selection-offset
+   git switch -c docs/contributing-typos
+   ```
+
+3. **Make your change.** Keep pull requests focused: one logical change per PR is
+   much easier to review than a grab bag.
+4. **Keep up to date** by rebasing on the latest `main` when needed:
+
+   ```bash
+   git fetch origin
+   git rebase origin/main
+   ```
+
+5. **Run the checks locally** before pushing (see
+   [Testing expectations](#testing-expectations)):
+
+   ```bash
+   npm run lint
+   npm run typecheck
+   npm run test
+   ```
+
+6. **Push** and open a pull request against `owenpkent/folio:main`. Fill in the
+   PR template completely, and link the issue your PR addresses (for example,
+   `Closes #123`).
+7. Mark the PR as a **draft** if it is still a work in progress.
+
+---
+
+## Commit messages (Conventional Commits)
+
+Vnyl uses [Conventional Commits](https://www.conventionalcommits.org/). This
+keeps history readable and lets us automate changelogs and releases.
+
+Format:
+
+```
+<type>(<optional scope>): <short summary>
+
+<optional body>
+
+<optional footer(s)>
+```
+
+Common types:
+
+- `feat` - a new feature
+- `fix` - a bug fix
+- `docs` - documentation only
+- `style` - formatting, no code change
+- `refactor` - code change that neither fixes a bug nor adds a feature
+- `perf` - a performance improvement
+- `test` - adding or fixing tests
+- `build` - build system or dependencies
+- `ci` - CI configuration
+- `chore` - other changes that do not modify src or test files
+
+Examples:
+
+```
+feat(viewer): add continuous scroll mode
+fix(annotations): correct highlight offset on rotated pages
+docs(contributing): document the DCO sign-off flow
+perf(render): cache rasterized pages across zoom changes
+refactor(store): split viewer state into focused Zustand slices
+```
+
+Breaking changes use a `!` after the type/scope and a `BREAKING CHANGE:`
+footer:
+
+```
+feat(plugins)!: change the plugin manifest schema
+
+BREAKING CHANGE: `permissions` is now an array of scoped strings.
+```
+
+---
+
+## Developer Certificate of Origin (DCO sign-off)
+
+Vnyl requires every commit to be signed off under the
+[Developer Certificate of Origin](https://developercertificate.org/). The
+sign-off is a simple line at the end of each commit message that certifies you
+wrote the patch or otherwise have the right to submit it under the project's
+license:
+
+```
+Signed-off-by: Jane Developer <jane@example.com>
+```
+
+The name and email must match your Git identity. Git adds this line for you
+when you pass `-s`:
+
+```bash
+git commit -s -m "feat(viewer): add continuous scroll mode"
+```
+
+To sign off work you already committed:
+
+```bash
+git commit --amend -s          # for the most recent commit
+git rebase --signoff origin/main   # to sign off a range of commits
+```
+
+Set your identity once so the sign-off is correct:
+
+```bash
+git config user.name "Jane Developer"
+git config user.email "jane@example.com"
+```
+
+Sign-off is checked during review (there is no automated DCO status check
+today). PRs with unsigned commits will be asked to add the sign-off before
+they are merged.
+
+---
+
+## Code style
+
+- **TypeScript / React**: linted with **ESLint** and formatted with
+  **Prettier**. Run:
+
+  ```bash
+  npm run lint      # report problems (add -- --fix locally to autofix)
+  npm run format    # apply Prettier formatting
+  ```
+
+- **Rust**: format with `cargo fmt` and lint with `cargo clippy` in
+  `src-tauri/`. Please keep Clippy warning-free.
+- Prefer clear names and small, focused modules. Match the style of the
+  surrounding code.
+- Do not commit formatting-only churn mixed into a feature PR; keep it separate.
+
+CI enforces linting, formatting, and type checks, so running them locally saves
+a round trip.
+
+---
+
+## Testing expectations
+
+- **Unit tests (Vitest):** add or update tests for the behavior you change.
+
+  ```bash
+  npm run test
+  ```
+
+- **End-to-end tests (Playwright):** for user-facing flows and regressions.
+
+  ```bash
+  npm run test:e2e
+  ```
+
+- Bug fixes should include a test that fails before the fix and passes after.
+- New features should include unit tests, plus e2e coverage when they touch the
+  UI or a full workflow.
+- Keep tests deterministic and fast. Prefer generating small fixtures at runtime
+  (the e2e suite builds its sample PDF with pdf-lib in `e2e/global-setup.ts`)
+  rather than committing binaries.
+
+See [docs/testing.md](docs/testing.md) for how the unit and e2e suites are
+organized and what is covered. All tests must pass in CI before a PR can merge.
+
+---
+
+## Dependencies
+
+- Use the package manager and commit the lockfile: `npm install <pkg>` for the
+  frontend (`package-lock.json`), `cargo add` for the Tauri backend. Pin to a
+  specific version or a narrow range; don't hand-edit the lockfile.
+- Verify a package exists on its registry before adding it, and prefer
+  well-vetted libraries over obscure ones (see the security rules in
+  [CLAUDE.md](CLAUDE.md)). Run `npm audit` and treat *new* high/critical findings
+  as blocking — but check them against the known-accepted list first. The gate
+  that actually blocks a release is **Dependabot alerts**, not `npm audit`: the
+  two disagree, because `npm audit` counts an advisory once per dependency path
+  and reports findings that cannot be fixed from here at all. One is open and
+  documented, with the evidence for why it is unfixable or does not apply:
+  [#58](https://github.com/owenpkent/folio/issues/58) (`glib`, Linux-only, pinned
+  by Tauri). `node-forge` (GHSA-86w9-cpqp-85rv, no patched release) used to be on
+  this list; it was removed from the dependency tree instead, and the header of
+  `src/features/signing/verify.ts` records why RSA verification must use
+  WebCrypto. Add to that list rather than silently carrying a finding.
+  ([#57](https://github.com/owenpkent/folio/issues/57), `brace-expansion`, was
+  resolved once eslint's `minimatch@3` resolved a patched copy.)
+- **Dependabot** opens monthly update PRs (npm, cargo, GitHub Actions), grouped
+  to cut noise. For npm, **minor and patch** bumps are grouped into a single PR
+  that should stay green and be easy to merge. **Major** bumps are intentionally
+  *not* batched together: each breaking upgrade opens as its own PR, because it
+  needs an individual, tested migration.
+
+  The exception is a **cohort** — packages whose peer ranges pin them to each
+  other, so no member can cross a major alone. `react` with `react-dom` and both
+  `@types`; `eslint` with `@eslint/*` and the plugins; `vite` with `@vitejs/*`;
+  `vitest` with `@vitest/*`. Those are grouped for major updates in
+  `.github/dependabot.yml`, and the reason is concrete: before they were, a PR
+  bumping half a cohort could not even `npm ci`, so it sat red for weeks without
+  saying anything about whether the upgrade worked. Grouping keeps one dedicated
+  PR per breaking upgrade while making that PR installable.
+
+  **Tauri** is a cohort that spans ecosystems: the npm `@tauri-apps/*` packages
+  and the `tauri` crates must share a major.minor (plugins pairwise included),
+  which the Tauri CLI and `scripts/check-tauri-versions.mjs` both enforce.
+  Dependabot cannot group npm with cargo here, and letting each side bump alone
+  produced two permanently red PRs (#98/#99). So Tauri **minor and major** bumps
+  are ignored on both sides and done by hand in one PR that moves both
+  lockfiles: `npm install` the new `@tauri-apps/*` versions, `cargo update` the
+  `tauri` crates in `src-tauri`, and run `node scripts/check-tauri-versions.mjs`
+  before pushing. Patch bumps still arrive through the normal groups, but a
+  crate patch can drag a paired plugin across a minor (#104:
+  `tauri-plugin-single-instance` 2.5.1 required `tauri-plugin-deep-link` 2.6,
+  while #103 bumped the npm side). If an npm and a cargo PR both fail the Tauri
+  build on a plugin mismatch, land them together as one PR, as #101 did. Note
+  that `check-tauri-versions.mjs` compares only `tauri` with `@tauri-apps/api`;
+  plugin pairs are caught by the Tauri CLI in the debug builds.
+
+  A dependency PR that dies at `npm ci` with `ERESOLVE` has **two** causes that
+  look identical, and they need opposite responses. Read the peer conflict npm
+  prints, find the package holding the old range, and check the registry
+  (`npm view <pkg> peerDependencies`) before doing anything:
+
+  1. **A cohort member was left behind**, and a compatible release exists. Add it
+     to the group in `.github/dependabot.yml` rather than closing the PR. This
+     was #20/#21 (`react-dom`) and #50/#51 (`@vitejs/plugin-react`).
+  2. **Upstream has not shipped support yet**, so there is no version to move to.
+     Nothing you can add to the cohort will help. Leave the PR open, record the
+     blocking package on it, and let it go green on its own when upstream
+     releases.
+
+  Case 2 has exactly one exception: a peer range that is **stale metadata**
+  rather than a real incompatibility. It has to be earned with evidence, never
+  assumed. That is [#47](https://github.com/owenpkent/folio/pull/47).
+  `eslint-plugin-jsx-a11y@6.10.2` is still the latest release and caps eslint at
+  `^9`, but it touches only `context.report`, `context.options`, and
+  `context.settings`. None of the context APIs eslint 10 removed (`getScope`,
+  `getAncestors`, `getSourceCode`, `getDeclaredVariables`,
+  `markVariableAsUsed`, `getFilename`, `getCwd`, `parserServices`) appear in its
+  `lib/` at all, it never reads `sourceCode`, and all 39 of its rules declare
+  `meta.schema`. So `package.json` carries a single-package override relaxing
+  that one peer and nothing else:
+
+  ```json
+  "overrides": { "eslint-plugin-jsx-a11y": { "eslint": "$eslint" } }
+  ```
+
+  Before adding a second one, re-run that search against the package's `lib/`
+  yourself. If the evidence is not that concrete, leave the PR blocked.
+
+  Do not reach for `--legacy-peer-deps` in either case. CI runs `npm ci` and
+  would still fail, and it would only convert an honest install error into a lint
+  run against an unsupported pairing. A scoped override is not the same tool: it
+  names one package and one peer, it shows up in the diff, and it leaves every
+  other peer conflict in the tree still failing loudly.
+
+  Never merge a dependency PR with failing CI.
+
+---
+
+## Proposing plugins and AI features
+
+Vnyl is designed to be extensible, and we welcome plugin and AI-assisted
+feature proposals. Because these touch security, privacy, and the trust model,
+we ask you to start with a proposal rather than a large surprise PR:
+
+1. **Open a feature request** using the feature request issue form, and select
+   the **plugins** or **AI** area. Describe the use case, the data the feature
+   would access, and any external services involved.
+2. For anything that reads document contents, calls a network service, or uses
+   an AI/MCP integration, describe the **data-handling and permissions** model:
+   what leaves the user's machine, when, and with what consent. See
+   [SECURITY.md](./SECURITY.md) for our plugin trust model and AI/MCP
+   data-handling scope.
+3. Discuss the design in the issue or a
+   [Discussion](https://github.com/owenpkent/folio/discussions) before writing
+   significant code. A short design note saves everyone time.
+4. Once there is rough agreement, open a draft PR and iterate.
+
+Plugins should be least-privilege by default and must never exfiltrate document
+data without explicit user action.
+
+---
+
+## Good first issues
+
+New to the project? Look for issues labeled
+[`good first issue`](https://github.com/owenpkent/folio/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+and [`help wanted`](https://github.com/owenpkent/folio/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22).
+These are scoped to be approachable and usually include pointers to the
+relevant files.
+
+Tips for a smooth first contribution:
+
+- Comment on the issue to let others know you are working on it.
+- Ask questions early; a small clarification beats a large rewrite.
+- Keep the PR small and focused on the linked issue.
+
+---
+
+## Review process
+
+- A maintainer will review your PR as soon as they can. Please be patient; this
+  is a community project.
+- Expect feedback. Reviews are about the code, not the person, and iteration is
+  normal and healthy.
+- Address comments by pushing additional commits (we squash on merge, so you do
+  not need to rewrite history for every round). Re-request review when ready.
+- CI must be green: lint, typecheck, unit tests (Node 22 and 24), the end-to-end
+  (Playwright) run, and the Tauri build matrix (ubuntu/windows/macos) are
+  required status checks enforced by branch protection on `main` — a PR cannot
+  be merged until they pass. Sign-off (see the DCO section) is checked in
+  review.
+- Maintainer review is expected before merge. Maintainers squash-merge with a
+  commit that preserves a Conventional Commit summary.
+
+Thank you for helping build Vnyl. We are glad you are here.
+
+---
+
+## License
+
+By contributing to Vnyl, you agree that your contributions will be licensed
+under the [MIT License](./LICENSE) that covers the project.

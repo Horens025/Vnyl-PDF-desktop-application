@@ -1,0 +1,1192 @@
+# Changelog
+
+All notable changes to Vnyl are documented here. The format is based on
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres
+to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.8.0] - 2026-11-02
+
+The product is now **Vnyl** (formerly Folio), with a new Liquid Glass look, several
+documents at once, and a set of conversion tools.
+
+### Added
+
+- **Split PDF** (single pages, every N pages, or page ranges; saved as separate
+  PDFs, a zip, or into a folder), **Extract pages** (any pages, in any order,
+  opened as a new tab or saved) and **Compress** (re-saves photos smaller while
+  text and drawings stay untouched; reports the saving). The open document is
+  exported the way Save does, so markups, signatures and edits come along.
+- **Recent files** on the start screen (desktop): reopen with one click; a file
+  that has moved is dropped from the list with a note.
+- **Keyboard shortcuts** dialog (Help menu, `Ctrl/Cmd+/`), generated from the
+  command registry so it is always current.
+- A **Browse tools** button on the start screen.
+- **Images to PDF** (Tools hub): pick or drop JPG, PNG, WebP, BMP or GIF files,
+  reorder them (move up/down, sort by name, remove), choose Fit to image / A4 /
+  Letter, orientation and margin, then open the PDF as a new tab or save it.
+  JPEG and PNG are embedded as they are, with no recompression. Phone photos
+  stored sideways (EXIF orientation) come out upright, and transparent PNGs sit
+  on white paper.
+- **Desktop saving for converted files**: in the desktop app, converter output
+  uses a native Save dialog, plus **Save all to folder…** (asks before replacing
+  files with the same names). Backed by a new `write_export` Rust command limited
+  to a closed list of file types (png, jpg, jpeg, webp, zip, txt, md, html).
+  Browser builds keep using downloads.
+- **Vnyl app icon** (glass tile, vinyl record, "V" label) and `scripts/make-icon.py`
+  to regenerate it; `docs/desktop.md` documents building and the desktop/browser
+  differences.
+- **Tools hub** (Tools > All tools…, Ctrl/Cmd+Shift+K): an Xodo-style gallery of
+  tools grouped as Convert from PDF, Convert to PDF, Organize, Edit & secure and
+  View & share, with search. Ready tools open their own panel or launch the
+  existing command; the rest are marked Coming soon or Desktop app.
+- **PDF to images**: PNG, JPG or WebP at 72 / 150 / 300 DPI, any page range
+  (`1-3, 5, 8-`), a file-name template (`{name}-page-{page}`), quality control
+  for JPG/WebP, progress with cancel, per-file download or one `.zip`.
+- **PDF to text**: plain text or Markdown, with a preview, download and copy.
+  Pages with no text are reported, with a hint to run OCR.
+- **Compare documents** (Tools > Compare documents…): pick any two open PDFs and
+  see a visual diff (ink only in A in red, only in B in green) or a word-level
+  text diff, page by page. Pages with differences are flagged, with Previous /
+  Next difference buttons, a swap button, and support for different page counts
+  and sizes.
+- **Segmented control** component (`Segmented`) with a spring-animated glass thumb.
+
+### Fixed
+
+- The toolbar showed "1 / 0" with no document open; it now shows a dash.
+- The menu bar and the document view now have proper landmarks and a heading
+  (axe reports no violations on the start screen, document, tools gallery, tool
+  panels or shortcuts dialog).
+- Dialogs that ask for `size="wide"` (Organize pages) were never wide: the base
+  `.folio-modal` width overrode the modifier on source order.
+- **Edit markup on the page**: click an existing highlight, underline,
+  strikethrough or squiggly to recolor it, change a highlight's opacity, or
+  delete it.
+- **Markup toolbar** (Annotate > Markup toolbar, Ctrl/Cmd+Shift+A): pick a tool
+  and it stays armed, so every passage you select is marked up immediately.
+  Esc turns the tool off.
+- **Text markup tools** (Xodo-style): underline, strikethrough and squiggly
+  underline alongside highlight. A floating glass popup appears above selected
+  text with the four markups, comment, a six-color picker and highlight
+  opacity (choices are remembered). Also in the Annotate menu, the right-click
+  menu and as commands (`annotate.underline`, `annotate.strikeout`,
+  `annotate.squiggly`; Ctrl/Cmd+Shift+U and +X). Saved copies write real
+  `/Underline`, `/StrikeOut` and `/Squiggly` PDF annotations.
+- **Liquid Glass interface style** (Apple-inspired): translucent, blurred toolbar,
+  sidebar, menus and dialogs over an ambient gradient, floating rounded toolbar
+  and sidebar, pill buttons. On by default; switch to **Classic** from the
+  Appearance menu (Interface style). Falls back to solid surfaces under
+  `prefers-reduced-transparency` and forced-colors. See `src/theme/glass.css`.
+
+### Changed
+
+- **`node-forge` removed** (GHSA-86w9-cpqp-85rv, no patched release). Signing
+  now uses WebCrypto for keys and signatures, `@peculiar/x509` for certificates,
+  `pkijs` and `asn1js` for the CMS signature, and a small in-repo PKCS#12
+  reader/writer (3DES via `des.js`). `@signpdf/signer-p12` is replaced by an
+  in-repo signer. Existing `.p12` identities import and sign unchanged (3DES or
+  AES, any MAC from SHA-1 to SHA-512, including node-forge's AES exports with a
+  non-ASCII passphrase); new ones use the same format as before. RC2-40
+  encrypted `.p12` files, which node-forge could read, are no longer supported.
+- **Tauri 2.11 to 2.12.1** on both the npm and Rust sides, with the deep-link
+  plugin moving to 2.6 and the updater plugin to 2.13.1.
+- **Tauri updates no longer arrive half-done from Dependabot.** The Tauri CLI and
+  `check-tauri-versions.mjs` require the npm packages and Rust crates to share a
+  major.minor, and Dependabot updates the two separately, so each side's PR failed
+  on its own (#98/#99, then #103/#104). Minor and major Tauri bumps are now
+  ignored on both sides and done by hand as one PR; patch bumps still come
+  through. CONTRIBUTING covers the remaining case, a crate patch that drags a
+  paired plugin across a minor.
+
+### Fixed
+
+- **A screen reader no longer reads the first page below the window as
+  blank.** The text layer was built only for pages inside the 600px
+  rasterisation ring, so at rest only the first page had text. Reading top to
+  bottom with NVDA in browse mode, the cursor reached the first page below the
+  window before its text had rendered, announced `blank`, and moved on without
+  ever speaking it (#95). The text layer now follows the wider 2400px ring that
+  page overlays already use, while the canvas keeps the tight ring that holds
+  memory down on a long scroll.
+- **Save never writes a PDF that lost pages or will not reopen.** Some files
+  (a page object whose generation does not match its `/Kids` reference, an object
+  numbered near 2^31) made the export silently drop pages and edits, insert a
+  blank page, or write a file no reader could open. The export now checks that
+  pdf-lib sees every page the viewer shows, saves without the blank-page
+  fallback, reopens the result in a separate PDF.js document, and retries once
+  without object streams before refusing with a message. Edits staged on a page
+  that is missing now stop the save instead of vanishing. A save with nothing
+  staged falls back to the original bytes when PDF.js cannot re-serialize a page,
+  but a failure with form edits staged is reported, never swallowed. Files with
+  junk before the `%PDF-` header (allowed up to 1024 bytes) no longer fail the
+  pass-through save check, and the save toast now says why it refused.
+
+### Security
+
+- **Cleared six Dependabot alerts in `undici`**, the most serious a
+  high-severity TLS certificate validation bypass in `BalancedPool`. The affected
+  copy (8.9.0) came in only through `jsdom` in the unit-test environment and was
+  never part of the shipped app; the lockfile now resolves 8.11.2.
+- **Patched `brace-expansion`** for a quadratic-time denial-of-service advisory
+  (two alerts). Every copy is pulled in by eslint, so this was never part of the
+  shipped app either; the lockfile now resolves 1.1.21 and 5.0.12. This also
+  closes #57: the older advisory it tracked was already fixed by the 1.1.18 copy
+  that main resolved before this change.
+
+## [0.7.0] - 2026-08-15
+
+### Added
+
+- **Combine PDFs from the Pages tab.** The sidebar's Pages tab now carries a
+  **Combine PDFs…** button above the thumbnails, opening the same dialog
+  File → Combine PDFs… does. Combining is a page-level operation, so it belongs
+  with the pages rather than only in a menu. It sits outside the scrolling list,
+  where it cannot drift away as the list moves or cover a thumbnail's selection
+  checkbox, and it stays available with no document open, since the dialog takes
+  its inputs from a picker and building a new PDF out of several files is the one
+  thing on that tab worth reaching from an empty viewer.
+- **Restarting to finish an update puts your document back.** Vnyl asks for
+  that restart; the user did not choose it, so it now records the open
+  document and the page it was on, and reopens both on the way back up. Only
+  for a restart accepted there and then: choosing "Later" records nothing,
+  because that update lands on some future launch started for other reasons,
+  and reopening a days-old document at that point is a surprise rather than a
+  convenience. Only for documents that came from disk, since a file picked in
+  the browser or fetched through a `folio://` link has no path to reopen. The
+  note is consumed on the next launch whether or not it is used, so it can
+  never reopen twice, and a file the OS hands Vnyl to open takes priority over
+  it. If the restart itself fails, the note goes with it rather than waiting to
+  surprise a later launch. Because the note lives in local storage, which is
+  not a trust boundary, the path is checked on the way back up rather than
+  taken at face value: an absolute local `.pdf`, never a UNC path, so nothing
+  writable on the machine can turn the next launch into a read of a file the
+  reader never opened or an outbound connection to a share. A document with
+  in-place edits says so in the restart prompt, since the restart reopens the
+  file from disk and anything not saved to it is lost. A document that fails to
+  reopen (moved, deleted, or on a drive that is no longer there) is left alone
+  rather than greeting the reader with an error about a file they did not ask
+  for.
+
+### Fixed
+
+- **Selecting recognized text no longer highlights the wrong shape.** On a page
+  with an OCR text layer, dragging across the text drew stubby highlight bars
+  sitting up and to the left of the words they belonged to, drifting further off
+  with every word along a line. The overlay positioned each recognized word
+  correctly but drew it in one of the browser's own fonts, and a selection
+  highlight follows the text, not the box the text was placed in: a word whose
+  substitute glyphs came out narrower than the scanned ones highlighted narrow
+  to match. Each word is now measured as the browser actually laid it out and
+  scaled horizontally onto the width it was recognized at, which is what PDF.js's
+  own text layer does for embedded text. Words are also sized to the full height
+  of their recognized box rather than nine tenths of it, so the highlight covers
+  the word instead of riding above it, and no longer clipped, so a highlight
+  cannot be cut off at the edge of a word.
+- **Right-clicking outside the document no longer opens a browser menu.** The
+  desktop app replaced the webview's menu over the pages themselves, but nowhere
+  else: right-clicking the sidebar, the toolbar, a dialog, or the splash screen
+  answered with WebView2's own -- Back, Reload, Save as, Print, Inspect --
+  offering navigation a PDF viewer does not have, actions that duplicate Vnyl's
+  with different behavior, and a route into the page's markup. Vnyl is a
+  document window, not a browser tab, and the frame it runs inside no longer
+  shows through it. Text fields keep their native menu, since cut, copy, and
+  paste live nowhere else; that includes the form fields drawn over a page.
+  Browser-build behavior is unchanged, where the surrounding page really is a
+  page in a tab and the browser's menu is the reader's to keep.
+
+### Security
+
+- The note that reopens a document after an update restart is validated by
+  value, not only by shape, before it reaches the file read: an absolute local
+  `.pdf`, never a UNC path. It lives in local storage, which is not a trust
+  boundary, and the Rust side's `read_document` guards only the extension.
+- Accepted for this release: one open **medium** Dependabot alert,
+  RUSTSEC-2024-0429 (unsoundness in `glib::VariantStrIter`), which reaches
+  Vnyl only through Tauri's Linux GTK stack -- code the Windows bundle never
+  compiles. No high or critical alerts are open, `npm audit` reports zero
+  vulnerabilities, and `cargo audit` reports zero (17 allowed warnings, all
+  unmaintained/unsound advisories on that same transitive GTK stack).
+
+## [0.6.0] - 2026-08-15
+
+### Added
+
+- **The Chrome extension grew up.** It was a preview that only caught URLs
+  ending in `.pdf`, which misses most PDFs served from behind an application
+  (`/download?id=123`). A second `declarativeNetRequest` rule now matches the
+  response's content-type. The two rules are deliberately not interchangeable:
+  the URL rule fires *before the request is sent*, so the origin serves nothing,
+  while the content-type rule can only fire once the response has arrived, so
+  the PDF is fetched, discarded, and fetched again. The URL rule takes priority
+  and the content-type rule is the catch-all underneath it.
+- **An options page for the extension**, with three modes -- open PDFs in Vnyl's
+  viewer, leave them to the browser, or turn the extension off -- plus a per-site
+  exclusion list covering subdomains. Turning interception off removes the
+  redirect rules rather than leaving them installed and second-guessing them.
+  Keyboard-operable and screen-reader-labeled, and it follows the OS colour
+  scheme along with `prefers-contrast` and `prefers-reduced-motion`.
+- **File → Download original**, for a document opened from a URL in the browser.
+  A PDF link the site marked as a download is opened in the viewer rather than
+  downloaded, because the URL rule matches before any response headers exist, so
+  the untouched file stays one click away. It is fetched into a blob rather than
+  linked with `download`, which is ignored cross-origin and would navigate
+  straight back into the viewer.
+- **A reproducible extension package.** `npm run package:chrome` stages into
+  `extensions/chrome/build/` and emits a `.zip` that is a function of the commit:
+  building the same commit twice gives byte-identical output, which CI verifies
+  by doing exactly that. The archive writer is in-tree because nothing in the
+  dependency set produces deterministic output.
+- **A privacy policy for the extension**, at
+  [docs/browser-extension-privacy.md](docs/browser-extension-privacy.md).
+- **Combine PDFs.** File → Combine PDFs… merges two or more PDFs into a single
+  document. Pick files in the dialog, or drop several PDFs onto the window at
+  once, then reorder or remove them in the list before combining (every control
+  is keyboard-reachable and labelled). The merged document opens in the viewer
+  as a new, unsaved file, so Save asks where to put it rather than writing over
+  any of the inputs. Form fields are carried over from every input, still
+  filled and still editable, with a name that collides between two inputs
+  renamed rather than fused into one field. A corrupt or password-protected
+  input fails with a message naming the offending file, and a PDF whose header
+  sits behind up to 1&nbsp;KB of preamble junk (the spec allows it) still
+  combines fine.
+- **Delete, reorder, and rotate pages.** Pages can be picked out in the
+  thumbnail sidebar or in a new full-window **Pages → Organize pages** grid, then
+  dragged to a new position, moved with **Alt+↑/↓**, turned with **Ctrl+[** and
+  **Ctrl+]**, or deleted. Every operation is one undo step (**Ctrl+Z**), and each
+  is committed as a whole-document plan rather than a sequence of moves, so
+  dragging a page across ninety positions rewrites the file once. Reordering
+  happens inside the existing document rather than by copying pages into a fresh
+  one, which is what keeps the outline, the AcroForm, and the document metadata
+  that `pdf-lib`'s `copyPages` drops. Selection, dragging, and keyboard operation
+  are the same code in both surfaces, so they cannot drift apart.
+- **Deleting a page removes its content from the file.** Unlinking a page from
+  the page tree, which is all `pdf-lib` does, leaves its content stream, images,
+  and annotations in the saved bytes for anyone willing to run a parser over
+  them. Deleting now runs a mark-and-sweep that refuses to walk through a dropped
+  page, so nothing only that page owned survives, and scrubs the references that
+  are left dangling: bookmark destinations, named destinations, `/OpenAction`,
+  link targets, and structure-tree page pointers. The page's annotations and the
+  structure elements describing them go with it, because `/AcroForm /Fields` and
+  a tagged document's `/StructTreeRoot` both reach a widget by a path that never
+  touches the page: without that, deleting the page holding a filled field left
+  its values and their appearance streams in the file. Form fields whose every
+  widget is gone are pruned from the AcroForm too. One case is deliberately left
+  alone and documented rather than guessed at: an image only the deleted page
+  drew, but which the producer put in a `/Resources` on the page *tree* node, is
+  still reachable by inheritance and stays. Because this sweep is the only code
+  in Vnyl that deletes objects, and because **Save** writes over the file the
+  document came from, the rewritten bytes are parsed and their page count checked
+  before they are used: a result that cannot be read back is refused and the open
+  document is left untouched.
+- **Copy an email or web address from the right-click menu.** Right-clicking an
+  address in a page offers **Copy email address** or **Copy link address**
+  instead of making you drag-select it across the text layer and hope you caught
+  the right characters. Three sources feed it: the `/Link` annotations an author
+  embedded, addresses printed in the page text, and text Vnyl recognised itself
+  on a scan. The annotation wins where they disagree, since that is the target a
+  click would follow.
+  The menu shows the target on a second line, not just the action, because a
+  document can print "Click here for details" over a link pointing anywhere; that
+  line is the one moment a reader can see the difference. Nothing is opened, only
+  copied, so this adds no way for a document to trigger outbound navigation.
+  Detection is conservative on purpose (a scheme, a `www.`, or a well-known
+  suffix), so "Fig.2", "version 1.2.3" and "report.pdf" are left alone, and an
+  address PDF.js split across two text runs is rejoined only when the two
+  visually touch, so "visit" and "example.com" never become one. A suffix that is
+  also an ordinary English word (`co`, `de`, `it`, `in`, `at`, `us`, `no`, `me`,
+  `be`, `ie`) needs a path as well, which is what separates the short links a
+  document actually prints — `t.co/aB3xY9`, `youtu.be/dQw4w9WgXcQ` — from a
+  sentence that lost the space after its full stop ("File the report.No changes
+  are needed"), a shape OCR produces routinely.
+  Hovering an address marks it and shows its target, so you can see it is
+  copyable without right-clicking to find out. There is no cursor change on
+  purpose: Acrobat's hand cursor is honest because its links are clickable, but
+  Vnyl only offers to copy, so a pointer cursor would promise a click that does
+  nothing. The hint is anchored under the address rather than following the
+  pointer, and `Escape` dismisses it (WCAG 2.2 SC 1.4.13).
+  Addresses are also found in **OCR text**, which matters because recognised
+  text lives in a sidecar until it is baked into a saved copy: without it a
+  freshly recognised scan would offer nothing at all.
+- **A file the OS will not hand over no longer takes the rest of the batch with
+  it.** Dropping or picking several PDFs at once keeps every file that read
+  successfully and names the ones that did not, where one locked or
+  permission-denied file used to discard the whole batch.
+- **`Escape` closes the OCR progress dialog.** Every other modal in the app took
+  it; the one you can be sitting in front of for minutes was the one that never
+  grew a handler. It now stops the run, exactly as `Escape` already did in the
+  print progress dialog — a request, not an abort, so the pages already
+  recognised are kept.
+- **Saving during an unfinished OCR run asks first.** Recognition deliberately
+  does not freeze the app, so Save, Print, and Digitally sign all stay available
+  while it runs — but an export taken part-way through bakes a text layer
+  covering only the pages recognised so far, leaving the rest image-only with
+  nothing in the file to say which is which. Those three now say how far the run
+  has got and offer *Save anyway* or *Wait for recognition*, rather than
+  producing a quietly half-searchable copy. A single-page recognition, over in
+  seconds, does not ask.
+
+### Changed
+
+- The extension's toolbar button is enabled only on a page where it does
+  something, instead of being always clickable and usually inert.
+- `manifest.version` is derived from `package.json`, and `npm run check:versions`
+  fails if the checked-in manifest has drifted. A separate check pins the
+  extension's permission surface, so widening it is a deliberate edit rather
+  than a side effect.
+- Source maps no longer ship in the extension package, and the OCR runtime is
+  left out of it: together they took the package from about 17 MB to 4.24 MB
+  (1.26 MB packed). OCR is absent from the UI in that build rather than present
+  and failing on a missing asset.
+- The roadmap no longer lists a browser extension as a non-goal, which it has
+  not been since the preview landed.
+
+### Fixed
+
+- **Two document changes could run at once and quietly discard each other.** Page
+  operations, in-place text and image editing, Combine, OCR, Save, Print, digital
+  signing, and Open/Close all rewrite or replace the open document, and each only
+  guarded against a second attempt at *itself*. Dropping a PDF on the window
+  mid-page-operation reset every sidecar store to the new file while the page
+  operation went on to reload the old one's bytes and remap the old one's
+  highlights, signatures, and OCR text over them. All of them now go through one
+  lock. Where a control can be disabled up front it is, with a tooltip saying
+  why; anything reached by a keyboard shortcut anyway reports the refusal instead
+  of appearing to do nothing.
+
+  Recognition is the one thing that does **not** freeze the app, because it is
+  also the longest: OCR writes only its own sidecar, so Save, Print, Sign, and
+  both in-place editors stay available for the whole run. Only the operations
+  that renumber or replace pages wait for it.
+- **Print could put OCR text and stamped edits on the wrong pages.** Printing
+  bakes through the same snapshot Save does, but read it with nothing holding
+  the document still, so a print started while a page operation was mid-swap
+  mixed pre-swap bytes with a post-remap sidecar. Save guarded this; print did
+  not.
+- **Save and Sign froze the rest of the app while a file dialog was open.** Both
+  held the document lock across the native Save-as dialog, so page operations,
+  Combine, OCR, both in-place editors, Open, and Close stayed disabled for as
+  long as the user spent picking a folder. The lock now covers preparing the
+  bytes and stops there.
+- **A screen reader was told an image had moved or been deleted when it had
+  not.** The keyboard nudge keys announced the new position, or `Image deleted`,
+  before the Edit images layer had a chance to refuse the change — and it refuses
+  whenever another document change is in flight. The announcement was the only
+  feedback for a keyboard user, and it was the wrong one.
+- **`Ctrl/Cmd + Z` could undo across a failed reload.** An image or text edit
+  invalidated the other features' undo stacks *after* awaiting the document
+  reload, so a reload that rejected left both stacks poppable against bytes they
+  no longer described. Page operations already cleared them first; the other two
+  now match.
+- **Short links stopped being detected as addresses.** Trimming ambiguous
+  two-letter suffixes out of address detection also took `t.co/…` and
+  `youtu.be/…` with it, along with every bare domain under `.de`, `.it`, `.in`,
+  `.at`, `.co`, and `.ie`. Those suffixes are accepted again when the token
+  carries a path, which no run-together sentence does.
+- **A PDF URL containing `&` opened the wrong document.** The extension carries
+  the document's URL in the viewer's fragment un-encoded, and the viewer read it
+  with `URLSearchParams`, which truncated at the first ampersand: a link to
+  `/download?doc=42&fmt=pdf` fetched `/download?doc=42`. The fragment is now read
+  verbatim.
+- `SOURCE_DATE_EPOCH` is honoured when set, so the build date baked into the
+  bundle stops two builds of the same commit from differing.
+- Dependency advisories cleared: `brace-expansion` (dev-only, GHSA-mh99-v99m-4gvg),
+  `nanoid` (dev-only via Vite's PostCSS, GHSA-2v37-7h3g-55p8), and
+  `event-listener` (RUSTSEC-2026-0221). `npm audit` and `cargo audit` both
+  report no vulnerabilities.
+
+- **Vnyl is selectable as the Windows `.pdf` handler.** A PDF downloaded
+  from Chrome kept opening in Acrobat or Edge, and the usual remedy did not
+  work: Vnyl was absent from *Open with -> Choose another app*, so there was no
+  way to point `.pdf` at it. Tauri's `bundle.fileAssociations` writes the ProgID
+  and the `.pdf` default value, but not the two keys Explorer actually builds
+  the picker from -- `Software\Classes\.pdf\OpenWithProgids` and
+  `Software\Classes\Applications\folio.exe` (with `FriendlyAppName`,
+  `SupportedTypes`, and an open command). `src-tauri/installer.nsh` now writes
+  both, adds an `Application` subkey so the entry is labelled **Vnyl** rather
+  than "Portable Document Format document", and fires `SHCNE_ASSOCCHANGED` so
+  the picker updates without a shell restart. Uninstall removes only Vnyl's own
+  `OpenWithProgids` value, leaving other handlers' entries intact.
+
+  What this does *not* do is seize the association: `.pdf`'s current default is
+  held in `UserChoice`, hash-protected so only Explorer can set it, and Chrome's
+  "open downloaded file" is a plain `ShellExecute` that follows it. Reassigning
+  is still a deliberate user action -- via *Open with -> Always*, or the
+  start-screen *Make Vnyl your default PDF viewer* button, which deep-links to
+  Vnyl's page in *Settings -> Default apps*. `docs/getting-started.md`
+  troubleshoots the symptom end to end.
+- **Overlays are stamped correctly onto rotated pages.** Placed text, images,
+  check marks, signatures, highlights, sticky notes, and the OCR text layer all
+  record their position as a fraction of the page *as displayed*, but every
+  stamper measured against the unrotated MediaBox and drew without a rotation. On
+  any document that ships with a page turned 90°, 180°, or 270° — which looked
+  right on screen — saving or printing put the overlay in the wrong corner and
+  sideways. All four bake paths now go through one shared view-space to
+  user-space mapping. Output for unrotated pages is unchanged.
+- **Page geometry is re-measured when the document's bytes change.** The layout
+  size cache is keyed by page number and was only refreshed on open, so a page
+  that changed shape underneath it kept the box it used to have.
+
+### Security
+
+- The URL handed to the desktop app over `folio://` is scheme-checked before the
+  link is built. It can be recovered from the viewer's fragment, which is chosen
+  by whatever navigated there, so a page could park the user on the viewer with
+  `#file=javascript:…` and wait for a toolbar click. The desktop side already
+  rejected it; this is the outer of two checks rather than the only one.
+- The extension viewer sets `frame-ancestors 'none'`. It must be reachable from
+  any origin for the redirect to work, which also allowed any page to frame it
+  and use load success or failure as an oracle for an authenticated request.
+- The viewer now refuses to fetch anything that is not `http:` or `https:`. The
+  document URL arrives in a fragment from a page navigation, so any site can
+  choose it; `javascript:`, `data:`, and `file:` were previously passed to
+  `fetch` unchecked.
+- The extension's `web_accessible_resources` narrowed from `dist/*` to
+  `dist/index.html`. Only the entry point needs to be reachable from a web
+  origin; the page's own assets are same-origin once it has loaded.
+
+## [0.5.0] - 2026-08-01
+
+### Added
+
+- **Move, resize, and delete any placed item from the keyboard.** Dragging and
+  the corner handle were the only way to position a text box, a placed image, a
+  check mark, a signature, or an embedded image, which is a WCAG 2.1.1 failure
+  repeated across five features. Every one of them is now focusable and responds
+  to the arrow keys (one screen pixel, ten with **Shift**), `+`/`-` to resize,
+  and **Delete** to remove. One implementation serves all five, so the bindings
+  cannot drift apart. Steps are screen pixels of the rendered page rather than
+  PDF points, matching how the drag handlers already worked: zoom in for finer
+  control. Arrows typed inside a text box still move the caret, and a nudge does
+  not also scroll the document. Announcements are debounced, so a run of presses
+  reports where the item ended up instead of flooding a screen reader per key.
+  Aspect ratio stays locked wherever the pointer locks it, and a resize that
+  would push one axis past its limit is refused whole rather than silently
+  reshaping the item.
+- **Application menu bar.** A classic File / Edit / View / Annotate / Sign /
+  Tools / Help menu row above the toolbar, built in-app (pure DOM, so it is
+  identical in the desktop app, the browser build, and the VS Code extension)
+  and driven by the command registry: each item executes the same command its
+  toolbar button did, shows the command's declared shortcut, and disables when
+  the command cannot run. Implements the full ARIA menubar keyboard pattern
+  (roving tab stop, arrow keys across and within menus, Home/End, Escape,
+  hover-slide between open menus). On narrow windows it folds into a single
+  hamburger Menu button with grouped rows. The Tools menu hosts
+  plugin-contributed commands and hides when no plugin contributes any.
+- **Thumbnails follow the current page.** The sidebar thumbnail strip scrolls
+  its highlighted page into view as you move through the document, using
+  nearest-edge scrolling so it never jumps when the thumb is already visible,
+  and stands down for a moment while you scroll the sidebar by hand.
+  Respects `prefers-reduced-motion`.
+- **Recent signature names.** The Type tab of the signature dialog remembers the
+  last five names you signed with (and the style you picked for each), offers
+  them as one-click chips, and prefills the most recent one, so signing a second
+  document no longer means retyping your name. Stored locally, text and font
+  only, never the rendered image.
+- **Text inside Form XObjects is now editable.** The content-stream parser
+  descends into `Do`-invoked Form XObjects, composing each form's own
+  `/Matrix` with the transform at the invocation site, so text placed by a
+  template, a letterhead, or a form generator can be clicked and replaced like
+  any other run. Previously all of it reported "cannot be edited", which read
+  as though the page were a scan even when the text was ordinary vector text.
+  An edit never rewrites the form in place: the same form can be drawn by
+  other pages, so the whole chain from the edited form up to the page is
+  copied and only this page's resources are redirected at the copy. Text in a
+  form the page draws more than once is still refused, because removing it
+  would clear every copy while the replacement is drawn only once.
+- **Check marks.** A mark placed by clicking a spot on the page, for forms that
+  show a printed box with no interactive field behind it. Selecting a placed
+  mark offers a check or a cross. It goes through the same click-to-place mode
+  as text boxes, images, and signatures, with one difference: a click that lands
+  on a *real* form widget reaches the widget instead, since a mark exists only to
+  stand in for a checkbox that has no field. Like the other placement tools, a
+  mark is an overlay until you save, then it is baked as a stroked vector path,
+  so it stays sharp at any zoom.
+- **Select, move, resize, replace, and delete images already in a PDF.** A new
+  **Edit images** tool, in the Edit menu beside *Edit text*, lets you click an image
+  already drawn on a page, then drag it, resize it from the corner, delete it,
+  or replace it with a different PNG/JPEG, committing immediately the same way
+  in-place text edits do, rather than waiting for a save. A move or resize
+  rewrites the page's `/Name Do` operator in place with a new matrix, keeping
+  the graphics state and z-order exactly as they were; a replace embeds the
+  new image under a fresh resource name and repoints only that operator, so
+  the original image XObject (and any other page still drawing it) is never
+  touched. Rotated or skewed images can still be replaced in place but not
+  moved or resized, and an image inside a Form XObject is not editable yet.
+- **Print.** `Ctrl/Cmd + P`, or File → Print…, sends the open document to the
+  system print dialog. Printing goes through the same bake pipeline as Save
+  (`exportDocument`), then rasterizes those bytes in a throwaway PDF.js
+  document, so placed text, images, check marks, signatures, and highlights all
+  reach the paper. Printing the on-screen canvas instead would have dropped
+  every one of them, since they are DOM overlays above the canvas rather than
+  pixels in it. Pages are rendered at 144dpi in their authored colors: dark mode
+  is a screen reading aid and is deliberately not carried onto paper. Each page
+  is fitted inside one sheet rather than scaled to the paper's width, which on
+  any document narrower than the paper would have followed every page with a
+  second, near-blank sheet.
+- **Property/fuzz tests** (`fast-check`, `*.fuzz.test.ts`) over the parsers that
+  read bytes straight out of a PDF, run as part of `npm test` and at a much
+  higher iteration count via `npm run test:fuzz`. They cover `detectSignatures`
+  and the content-stream tokenizer and splice primitives, asserting the
+  properties an example-based test tends not to reach: the functions are total,
+  reported offsets stay in range, an operator splice never glues two tokens
+  together, and neither can be driven into unbounded work. The signature badge
+  bug above was found this way. See
+  [testing.md](docs/testing.md#property-and-fuzz-tests-fast-check).
+- **A root `ErrorBoundary`.** A render-phase throw previously unmounted the whole
+  tree and left a blank window, which is indistinguishable from the crash above
+  and equally unreportable. It now shows a message and a way out, moves focus to
+  it so it is not a screen the user is never told about, announces itself as an
+  alert, and logs the raw throw with the failing component stack to the console.
+  Whatever was thrown is reduced to one line for display, since a throw need not
+  be an `Error`, and file paths are stripped out of it: the crash screen is one
+  people screenshot into bug reports, and the install path names the account.
+- **The e2e suite now also runs against a production build**
+  (`npm run test:e2e:preview`, and a second CI step). Every spec previously ran
+  only against the dev server, which ships each module roughly as authored, so
+  nothing exercised the bundler or its minifier. The Vite 8 bump
+  ([#62](https://github.com/owenpkent/folio/pull/62)) proved what that costs: it
+  broke digital signing in the built app, and `tsc` could not see it (it reads
+  the `.d.ts`), Vitest could not see it (Node's interop matches esbuild), and the
+  dev-server run caught it only because the dep optimizer happened to agree with
+  the bundler. Verified by reintroducing that bug, which the new run fails on.
+  See [testing.md](docs/testing.md#the-same-suite-against-a-production-build).
+
+### Changed
+
+- **Text boxes, images, signatures, and check marks are placed where you
+  click.** Adding one no longer drops it in the middle of the page for you to
+  drag into position:
+  the tool arms a click-to-place mode (with a banner; Escape, the banner's
+  Cancel, or a click anywhere off a page backs out) and the next click on a page
+  decides where the item lands. Text boxes start at the click, images and
+  signatures land centered on it. Picking a spot is a pointer affordance, so the
+  banner takes focus and carries the keyboard path: **Place in the middle**
+  centers the item on the current page, which is what these tools did before.
+- **A text box moves by dragging anywhere on it.** The narrow grip above the box
+  is gone; press anywhere on the box and drag. A press that does not travel is
+  still a plain click, so selecting a box and placing the caret work as before.
+- **The toolbar slimmed down.** With the menu bar carrying the full command
+  set, the toolbar's right side keeps only Save and Find next to the pinned
+  theme controls and About; comment, highlight, edit text, edit images, add text
+  box, add image, add check mark, OCR, both signature actions, save a copy, and
+  plugin buttons all live in the menus.
+- **Upgraded to React 19** (`react`, `react-dom`, and both `@types` packages
+  together). No source changes were needed: no removed React 18 API is used
+  anywhere, and no ref callback returns a value, which is the React 19 change
+  least likely to be caught by a test suite since a returned value is now treated
+  as a cleanup function. Also picks up grouped GitHub Actions and Cargo
+  dependency bumps.
+- **One toolbar button for the viewing mode.** The light/dark toggle and the
+  dark-reading-colour dropdown were two adjacent buttons; they are now a single
+  `AppearanceMenu` that opens a menu with every option: Light, Dark, Match
+  system, then Night, Green, Amber. `Match system` was already a supported
+  `theme` value but no toolbar control could reach it, since the toggle only
+  ever flipped between light and dark. The trigger icon now reports the mode in
+  effect rather than the one a click would apply, because it opens a menu rather
+  than toggling. `Ctrl/Cmd + Shift + L` and the View menu are unchanged.
+- **Word Count no longer holds a tab in the sidebar.** The built-in plugin
+  contributed a sidebar panel, which put a permanent Word Count tab in the left
+  rail beside Thumbnails, Outline, Annotations, and Signatures: standing
+  furniture for a demo that most sessions never open. The plugin keeps its
+  command and its Tools-menu entry, and now reports characters and pages in the
+  toast alongside the word count, which is where the panel's numbers went.
+  `registerSidebarPanel` is untouched as a plugin API; [plugins.md](docs/plugins.md#adding-a-sidebar-panel)
+  keeps the panel code as a worked illustration.
+- **Long documents no longer do whole-document work at open.** Every page
+  measured itself on mount, so opening fired one worker round-trip per page in a
+  single burst and pinned a page object per page for the session -- and did it
+  all again on every zoom step, because the measurement was taken at the current
+  scale. Pages are now measured once at scale 1, only when approached, and lay
+  out at an estimate taken from page 1 until then. The engine's page, text, and
+  text-item caches are now LRU-bounded, calling `PDFPageProxy.cleanup()` on
+  eviction, which is the call that actually frees anything (PDF.js keeps its own
+  reference to every page it hands out). The eight per-page overlay layers now
+  mount only near the viewport rather than for every page.
+- **Saving no longer serializes the PDF as a JSON array of numbers.** The bytes
+  went to Rust as `Array.from(bytes)`, so a 50MB document became a
+  50-million-element array on the UI thread -- the exact cost `read_document` was
+  written to avoid in the other direction. They now travel as a raw binary body,
+  with the destination path in a percent-encoded header. Requires
+  `ipc: http://ipc.localhost` in the CSP `connect-src`; the Rust side still
+  accepts a JSON body so the `postMessage` fallback keeps working.
+- **The engine no longer retains a second copy of the open file.** It kept a
+  defensive `.slice()` of the whole document for the session so signature
+  detection could read it later, because PDF.js transfers (and detaches) the
+  array it is given. Detection now runs before the handover instead.
+- **Documentation swept to match the code.** The stack table, the setup guide,
+  the contributing guide, and the architecture doc all still said React 18; the
+  in-place image tool was still described as living on the toolbar rather than in
+  the Edit menu; and the source-tree listing was missing `components/MenuBar`.
+  Corrected, along with a broken relative link in `CLAUDE.md` that pointed into
+  the security-tooling repo.
+- **The per-page overlay stack is now documented**
+  ([architecture.md](docs/architecture.md#the-per-page-overlay-stack)), with the
+  rule that keeps catching people out: a tool that covers the page with a
+  click-catcher sits *above* the forms layer, which only takes pointer events over
+  each field's own rect, so without the shared `formWidgetAt` hit-test any armed
+  tool makes form fields unfillable. Three tools do this and one of them inverts
+  the rule on purpose.
+- **`npm audit` guidance now points at the known-accepted list.** "Treat
+  high/critical as blocking" was becoming impossible to follow literally: the
+  gate that blocks a release is Dependabot, and `npm audit` additionally reports
+  findings that cannot be fixed from this repository at all
+  ([#57](https://github.com/owenpkent/folio/issues/57),
+  [#58](https://github.com/owenpkent/folio/issues/58)). The Dependabot section
+  also described major upgrades as never grouped, which stopped being true when
+  cohort grouping landed.
+- **The two causes of a dependency PR dying at `npm ci` are named separately**,
+  in CONTRIBUTING and in the header of `.github/dependabot.yml`. An `ERESOLVE`
+  prints the same peer conflict whether a cohort member was left behind (add it
+  to the group) or upstream has not shipped support at all (no group change
+  helps; the PR waits), and the guidance previously offered only the first
+  answer. Both places now point at `npm view <pkg> peerDependencies` as the way
+  to tell them apart, and rule out `--legacy-peer-deps`, which cannot help under
+  `npm ci` either way. The labels that config assigns (`dependencies`,
+  `javascript`, `rust`, `github-actions`) also did not exist, so Dependabot
+  commented that it could not apply them on every PR it opened; they exist now.
+- **The Playwright browser gotcha is documented** in
+  [testing.md](docs/testing.md) and the release checklist: the binary must be
+  reinstalled after any `@playwright/test` upgrade, or every spec fails at 0ms on
+  a missing executable, which reads as a catastrophic regression and is not one.
+
+### Fixed
+
+- **The densest displays no longer render below their own pixel density**
+  ([#29](https://github.com/owenpkent/folio/issues/29)). The backing-store scale
+  aimed for "at least 2x, at most 3x", so a panel reporting a `devicePixelRatio`
+  above 3 was handed a 3x render that it then had to stretch. The 3x ceiling is
+  gone: the target is now the greater of 2x and the display's own ratio, bounded
+  by the canvas pixel budget, which was always the real limit. The earlier half
+  of this issue — a `Math.min(1, dpr)` floor that could both under-render *and*
+  bust the budget — was already fixed; the docs and an old release note that
+  still claimed the render was never below the display ratio are corrected here.
+- **Re-render on DPI change now works on fractional-scaling displays**
+  ([#30](https://github.com/owenpkent/folio/issues/30)). Detection built a
+  `matchMedia('(resolution: Xdppx)')` query by interpolating
+  `window.devicePixelRatio`, relying on it evaluating true so that any change
+  would flip it false and fire. Windows at 133% reports 1.3333333333333333, and
+  an equality query built from a float like that may never evaluate true — and a
+  query that starts false never flips, so dragging a window between monitors left
+  pages baked at the old ratio and visibly blurry. Exactly the displays the
+  feature exists for. It now brackets the ratio with a range query, true by
+  construction whatever the float, and falls back to a low-frequency poll if even
+  that fails to match rather than silently doing nothing a second time.
+- **Green and Amber dark schemes now apply to thumbnails.** Sidebar previews
+  used a plain CSS invert, so they stayed white-on-black while the page showed
+  the selected scheme. Thumbnails now render through the same raster-time
+  invert-and-tint path as the page (`renderPage` `invert`/`tint`) and re-render
+  when the theme or scheme changes, so the strip always matches the page.
+- **Signatures, text boxes, images, annotations, and the OCR layer no longer
+  render twice after saving and reopening a document.** Overlay content is
+  kept in a per-document sidecar keyed by the PDF fingerprint, which PDF.js
+  derives from the trailer `/ID`. Saving baked that content into the page but
+  carried the source `/ID` through unchanged, so the saved file kept its
+  source's fingerprint and reopening it loaded the same sidecar back on top of
+  content already in the page. A flattened export now gets its own document
+  identity. One consequence worth knowing: overlay content in a reopened
+  export is part of the page, so it can no longer be dragged or deleted, the
+  same way Acrobat treats flattened content.
+- **Form fields stay clickable while an editing tool is armed.** Edit text, Edit
+  images, and any armed placement each cover the whole page with a
+  click-catcher, and all of them sit above the form layer, which only takes
+  clicks over each field's own rect. Any of them would swallow a click meant for
+  a checkbox, radio button, or text field. A click that lands on a widget now
+  reaches the widget instead.
+- **Clicking an image Vnyl cannot edit explains why.** The Edit images tool
+  ignored a click on an image inside a Form XObject without saying anything,
+  the same silent dead end that made the original text-editing problem so hard
+  to place. Such an image is now selected and the reason shown. Dragging one
+  is refused up front, rather than tracking the pointer and snapping back on
+  release.
+- **Sticky note pins open from the keyboard.** A pin is a focusable button
+  that announces the note it holds, but it opened the note only on
+  `pointerup`, which is what lets that handler tell a click apart from the end
+  of a drag. Keyboard activation fires no pointer events, so `Enter` and
+  `Space` on a focused pin did nothing at all, a WCAG 2.1.1 failure on a
+  control that named itself as actionable.
+- **The browser tab and the app window have an icon.** `index.html` declared no
+  favicon, so anything that ran Vnyl from the dev server or a browser -- the
+  Chromium app window `run.py dev` opens, above all, where the favicon *is* the
+  title-bar icon -- showed the browser's default globe. It points at the same
+  `folio-logo.svg` the desktop icon set is generated from, so the tab, the app
+  window, and the installed app all show one mark. The packaged desktop build
+  was never affected; Tauri embeds its icons in the binary.
+- **Opening a large PDF no longer white-screens the app.** The thumbnail
+  sidebar's lazy loading was inert: its `IntersectionObserver` was rooted at
+  `.folio-thumbnails`, which is not the element that scrolls. With an element
+  root, `IntersectionObserver` clips only against containers *between* target and
+  root and never above it, so the unclipped inner wrapper reported **every**
+  thumbnail in the document as visible in the first observation batch. Every page
+  then rasterized at once, with no concurrency cap. The sidebar is open by
+  default on desktop, so this ran on every open with no user action, and every
+  failure was swallowed by a `.catch(() => {})` -- including the "could not
+  acquire a 2D canvas context" that Chromium raises when canvas memory is
+  exhausted. The app therefore died silently, with the WebView2 renderer
+  OOM-killed and the window left blank. Rooted at the real scroller, and the
+  observer is now two-way so a thumbnail that scrolls away gives its canvas back
+  instead of retaining every one it ever rendered.
+- **Scrolling quickly through a long document no longer leaks a canvas per page.**
+  `renderPage` sized the canvas *after* awaiting the page, so a render aborted
+  mid-flight re-allocated the backing store for a page the viewer had already
+  zeroed and scrolled past, and nothing zeroed it a second time.
+- **Save refuses a payload that is not a document.** Saving in place replaces the
+  open file with the exported bytes, so an export that came back empty or
+  truncated would take the only copy with it, and nothing checked. Both save
+  paths now require the `%PDF-` header and a plausible length before anything is
+  written, and refusing says so instead of returning silently, which is
+  indistinguishable from a save that worked.
+
+### Security
+
+- **The content-stream parser bounds how much work one document can make it
+  do.** Descending into Form XObjects checks for cycles along the current path
+  only, so a form reached down a different branch is descended into again. A
+  document whose forms each invoke the next one several times therefore cost
+  fan-out to the power of the depth limit in stream traversals, enough to hang
+  the tab on a file the user only meant to open. Total descents per parse are
+  now capped, well above what real documents use.
+- **A `/ByteRange` that runs past the end of the file no longer verifies as
+  clean.** `coversWholeDocument` was computed by scanning from the end of the
+  signed byte range, but that offset is read straight out of the file: when it
+  pointed past the end, the scan had nothing to iterate and returned true
+  *vacuously*. A `/ByteRange` naming a range longer than the file, plus arbitrary
+  appended content, earned the green badge. A range that ends past EOF is now
+  treated as a failure, not a pass. Note the scope of that badge, which the
+  docstring and the signatures documentation had overstated and now describe
+  accurately: the check is structural, so it establishes that nothing was
+  appended after the signature, not that the signed content is unmodified. The
+  CMS digest is still not computed, so an in-place edit inside the signed range
+  is not detected.
+- **Signature detection no longer builds a string copy of the whole document.**
+  It runs synchronously on the main thread as a document opens, and it used to
+  latin-1 decode the entire file (which the first regex then flattened into a
+  second full-size copy) before looking for anything. Above V8's ~512MB string
+  limit that threw outright; below it, it pushed the renderer toward the same
+  out-of-memory condition the rest of this release is about. It now scans the raw
+  bytes and decodes only small windows around each signature dictionary. The byte
+  scan is bounded as well, at 200 candidate `/ByteRange` sites and 16MB of total
+  decoding per pass: those caps caught a cost introduced by this rewrite rather
+  than a pre-existing one, since a file made of nothing but repeated `/ByteRange`
+  markers measured ~290ms of scanning per megabyte before they were added.
+
+
+- **Updated `postcss` to 8.5.24 and the VS Code extension's `esbuild` to 0.25**,
+  clearing the two Dependabot alerts that appeared once alerts were enabled for
+  the repository. Both are development-only dependencies and neither ships in a
+  built artifact: postcss arrives transitively through Vite
+  ([GHSA-r28c-9q8g-f849](https://github.com/advisories/GHSA-r28c-9q8g-f849), path
+  traversal in source-map auto-loading), and esbuild is the extension's bundler
+  ([GHSA-67mh-4wv8-2f99](https://github.com/advisories/GHSA-67mh-4wv8-2f99), dev
+  server request handling). The postcss one was a **high**, which the release
+  checklist gates on, so it would have blocked the next release.
+- **Accepted rather than fixed: one medium Dependabot alert.** `glib` carries an
+  unsoundness advisory in the `Iterator` and `DoubleEndedIterator` impls for
+  `VariantStrIter`, fixed upstream in 0.20.0. The version here is pinned
+  transitively by Tauri's Linux stack, so it cannot be moved from this
+  repository, and it is not in the Windows build that ships. Tracked in
+  [#58](https://github.com/owenpkent/folio/issues/58); the release checklist
+  gates on high and critical only.
+
+## [0.4.0] - 2026-07-23
+
+### Changed
+
+- **The Green dark scheme now uses the Linux console's bright ANSI green**
+  (`#55FF55`) instead of a pastel mint (`#4ADE80`), so green-on-black pages
+  read like a classic terminal.
+
+### Added
+
+- **Save in place.** `Ctrl/Cmd + S` now saves back to the file the document was
+  opened from (file picker, launch file, or desktop drag-and-drop), instead of
+  always prompting for a new path. "Save a copy…" moved to
+  `Ctrl/Cmd + Shift + S`, with its own toolbar and context-menu entries. When
+  there is no writable origin (the browser build, fetched URLs, browser
+  drag-and-drop), Save falls back to the save-a-copy dialog.
+- **Splash screen.** The empty state now leads with the Vnyl mark and
+  wordmark, and the open-a-document controls appear only once startup file
+  handling has settled, so opening a PDF by double-clicking it no longer
+  flashes the open UI before the document loads. Animations respect
+  `prefers-reduced-motion`.
+- **Mobile mode.** Narrow windows now get a phone-friendly layout instead of a
+  squashed desktop one. At 640px and below, the sidebar becomes an overlay
+  drawer over the document (it starts closed, a tap on the dimmed area or
+  pressing `Esc` dismisses it, and picking a thumbnail or outline entry
+  navigates and closes it), and the toolbar folds the filename, the theme
+  controls, About, and the secondary view tools (fit width/page, hand tool,
+  auto-scroll) into the **More** menu as labeled rows, so every control stays
+  reachable. At 480px and below, zoom in/out and the zoom readout fold as
+  well. Coarse (touch) pointers get 40px hit targets. Toolbar icon buttons no
+  longer flex-shrink when space runs out; squeezed buttons also distorted the
+  width measurement that decides what collapses into the menu. Breakpoints
+  live in `src/theme/breakpoints.ts`, and `e2e/mobile.spec.ts` pins the
+  drawer and no-clip behavior at a phone viewport.
+- **The built-in Word Count plugin now has a toolbar trigger.** Its
+  `plugin.wordCount.show` command was registered but wired to no UI,
+  contradicting the accessibility guide's promise that every command without a
+  shortcut is reachable from the toolbar or a panel. The plugin now
+  contributes a toolbar item, which also puts the worked example in
+  docs/plugins.md back in line with the real source.
+
+### Fixed
+
+- **Saves are atomic.** `write_document` now writes to a randomly named temp
+  file in the destination directory and renames it over the target, so a crash
+  or full disk mid-save can no longer leave a truncated PDF. This matters now
+  that Save writes back to the opened document rather than only to new copies.
+- **"Make Vnyl your default PDF viewer" reliably opens Windows Settings.**
+  The `ms-settings:` deep link is now launched through ShellExecute (a hidden
+  `cmd /C start`) instead of `explorer.exe`, which dropped the URI's query on
+  some Windows builds and opened the default web browser instead.
+- **The page indicator stays on one line when the toolbar is squeezed.** In a
+  narrow window the "/ N" page count could wrap, landing the slash above the
+  count and mis-centering the page input. The toolbar now enforces
+  `white-space: nowrap` on itself and pins the page box so it neither shrinks
+  nor wraps, and `e2e/toolbar.spec.ts` guards the single-line indicator and
+  the toolbar's fixed height.
+
+### Security
+
+- **CI verifies the sha256 digests of the release binaries it downloads.**
+  The security workflow installs gitleaks and reviewdog from GitHub releases;
+  those tarballs are now pinned to the digests from each release's
+  `checksums.txt` (independently re-verified against the artifacts), and the
+  install fails on a mismatch. A version tag on a GitHub release is mutable;
+  the digest is not. The downloads also retry transient network faults
+  instead of failing the whole job.
+
+## [0.3.1] - 2026-07-20
+
+### Fixed
+
+- **Toolbar controls no longer clip off narrow or high-DPI windows.** The
+  right-hand tools (theme, About, save, find, …) used to spill past the window
+  edge, unreachable, on narrower or fractionally-scaled displays (the toolbar
+  held a fixed ~1345px intrinsic width). The open document's filename now
+  truncates first, and the auto-scroll speed slider only occupies toolbar width
+  while auto-scroll is active, so the tools stay inline down to ~960px.
+
+### Added
+
+- **Toolbar overflow menu.** Below the inline-fit width, the right-hand document
+  tools (comment, highlight, edit text, add text box, add image, OCR, add
+  signature, digitally sign, save a copy, find) collapse into a **More** (⋯)
+  dropdown instead of being clipped, and appear there as labeled rows. The
+  dark-scheme picker, light/dark toggle, and About stay pinned and always
+  visible. The set shown inline adjusts live as the window resizes.
+
+## [0.3.0] - 2026-07-20
+
+### Security
+
+- **Hardened the `fetch_pdf` browser hand-off against SSRF.** The `folio://`
+  deep link can be triggered by any web page, so the download command now
+  resolves the target host and rejects the request if any resolved IP is
+  loopback, private, link-local (including the `169.254.169.254` cloud-metadata
+  endpoint), carrier-grade NAT, benchmarking, reserved, or multicast — across
+  IPv4, IPv6, and IPv4-mapped IPv6. Validating resolved IPs rather than the URL
+  string defeats decimal/hex/octal encodings and DNS names that point at private
+  space. The connection is pinned to the pre-validated IPs (closing the
+  DNS-rebinding window), follows no redirects (so a public URL cannot bounce to
+  an internal host), and enforces connect/read timeouts.
+- **Tightened the desktop Content Security Policy** with `frame-ancestors 'none'`
+  and `form-action 'none'`, closing the framing and form-submission vectors.
+- **Upgraded `ureq` 2.x → 3.x** and reimplemented the `fetch_pdf` SSRF guard on
+  its new API: the pre-validated addresses are now pinned through a custom
+  `Resolver` (`Agent::with_parts`), redirects are disabled via `max_redirects(0)`,
+  and the body size ceiling is enforced with `Body::with_config().limit(...)`.
+- **Pinned the OCR language-model download to a SHA-256 digest.**
+  `scripts/setup-ocr-assets.mjs` fetches `eng.traineddata.gz` at setup time; it
+  now verifies the download against a pinned hash *before* writing it to
+  `public/tesseract/` and re-verifies a cached copy on every run, so a tampered,
+  truncated, or MITM'd model never lands on disk. The pinned `.gz` decompresses
+  byte-for-byte to the authoritative `tessdata_fast` 4.0.0 English model
+  (provenance recorded inline in the script).
+
+### Added
+
+- **Edit text in place**: a new **Edit text** tool (pencil icon, the
+  `textedit.toggle` command) that lets you click text already on a page and
+  replace it. Unlike the existing additive text-box tool, this is true in-place
+  editing: the original show-text operator is located and removed from the
+  page's content stream, and the replacement is drawn at the same spot, taking
+  effect as soon as you commit the edit rather than waiting for a save.
+  Replacement text uses a substituted Standard 14 font rather than the
+  document's own embedded font; rotated or skewed text, text inside Form
+  XObjects, and characters the standard fonts cannot encode are refused with a
+  toast instead of risking a corrupt file. `Ctrl/Cmd + Z` undoes up to 10 edits.
+  New `src/features/textedit` module, two new `PdfEngine` methods
+  (`getPageViewport`, `getTextItems`), and a `docVersion`-driven live reload of
+  the open document. See docs/editing-and-ocr.md.
+- **Hand (pan) tool**: a grab tool in the toolbar (and the `view.toggleHandMode`
+  command) that lets you click-drag the page to scroll. Text selection is
+  suppressed while it is active; form fields and placed edits still work.
+  Dragging tracks the cursor 1:1 (the viewer's `scroll-behavior: smooth` is
+  disabled while grabbing, so scrolling is instant rather than eased).
+  Middle-mouse-button drag now pans the page the same way in **any** mode, hand
+  tool on or off, and the browser's own middle-click autoscroll is suppressed
+  so it doesn't fight with it.
+- **Continuous auto-scroll**: a teleprompter-style scroll, toggled with a new
+  toolbar button (in the center group next to the hand tool) or the
+  `view.toggleAutoScroll` command. Speed ranges 4-160 px/s (`autoScroll`,
+  `autoScrollSpeed` in `viewerStore`, default 12), set with a geometric,
+  slow-weighted slider that appears next to the button for finer control at low
+  speeds. While running, `Esc` stops it and `ArrowUp`/`+` and `ArrowDown`/`-`
+  speed it up or slow it down; it pauses automatically while hand-panning and
+  stops on its own at the end of the document. Motion is smooth, sub-pixel
+  scrolling rather than a fixed per-frame jump.
+- **Right-click context menu**, Acrobat-style (new `src/features/contextmenu`
+  module): Select tool / Hand tool (with a checkmark on whichever is active),
+  Copy (selection), Highlight, Add comment, Add text box, Add image, Add
+  signature, Find, and Save a copy. It duplicates existing toolbar commands
+  rather than adding new behavior, and editable targets (form inputs, the note
+  editor) keep the browser's native context menu.
+- **The open document's filename** now shows in the toolbar's left group, next
+  to the open button, truncated with an ellipsis with the full name available
+  on hover.
+- **About dialog** (`help.about` command, an info (i) toolbar icon,
+  `src/features/about/AboutModal.tsx`): shows the app version, the git commit
+  hash, the build date, and the display's `devicePixelRatio` and window size.
+  Version/commit/date are injected at build time via Vite `define`
+  (`__APP_VERSION__`, `__COMMIT_HASH__` from `git rev-parse --short HEAD`,
+  falling back to "unknown", and `__BUILD_DATE__`; see `vite.config.ts` and
+  `src/vite-env.d.ts`). The dialog also has a manual "Check for updates"
+  button (`help.checkForUpdates`, desktop/Tauri only) that reuses the existing
+  `checkForUpdates(false)` path so it reports both "up to date" and error
+  outcomes via toast, not just a found update; the silent launch-time update
+  check is unchanged.
+- **Zoom now snaps to clean preset levels** - 25 / 50 / 75 / 100 / 125 / 150 /
+  200 / 300 / 400 / 600 / 800% - via `zoomIn`/`zoomOut`, instead of an
+  arbitrary step. The overall 25%-800% clamp is unchanged, and fit-width /
+  fit-page still compute an exact scale rather than snapping.
+- **Selectable dark reading schemes**, Acrobat-style: **Night** (plain
+  white-on-black), **Green**, and **Amber**, chosen from a new toolbar dropdown
+  (`DarkSchemeMenu`) next to the light/dark toggle. The choice is tied to dark
+  mode - light mode always shows the page as authored - and is persisted
+  (`darkScheme` in `themeStore`, `folio.darkScheme` in local storage, default
+  `night`).
+- **`Page Up` / `Page Down` scroll the document**, as the `nav.scrollUp` /
+  `nav.scrollDown` commands. They are bound as commands rather than left to the
+  browser so they keep working wherever focus happens to be.
+- **Tooltips on the remaining controls**: both modal close buttons, the toast
+  dismiss, the text/image/signature delete and resize handles, the text
+  inspector's font, size, bold and color controls, note pins, thumbnails and the
+  outline chevron. Rows whose text is clipped (search results, outline entries,
+  annotation rows) now reveal it on hover, as does the signature font picker,
+  whose label is replaced by the typed name.
+- **The sidebar, page and zoom buttons now name their shortcut** in their
+  tooltip, like the rest of the toolbar already did.
+- **Windows High Contrast (and any forced-colors mode) is now supported.**
+  Design tokens resolve to the user's own system colors, shadows are dropped,
+  toggled controls keep an outline so their state survives the palette being
+  flattened, and the rendered page opts out of recoloring so a document still
+  looks like its author wrote it.
+- **UI text scales with the OS/browser font-size preference.** Font sizes moved
+  from hardcoded `px` to `rem`; the default appearance is unchanged. Together
+  with the above this covers Section 508 **503.2**, which requires honoring
+  platform color, contrast and font settings and has no WCAG equivalent.
+
+### Fixed
+
+- **Highlights and sticky notes are no longer dropped when you save.** The export
+  read the edit, signature and OCR stores but never the annotation store, so
+  every highlight and note stayed in browser-local storage and never reached the
+  file. They are now written as real `/Highlight` and `/Text` annotations
+  carrying their text in `/Contents`, rather than flattened into the page
+  graphics — so other readers can see, edit and reply to them, and assistive
+  technology can read them. Annotated pages also get `/Tabs S` (ISO 14289-1
+  7.18.3).
+- **The sidebar panels are reachable by keyboard again.** The tab rail used a
+  roving tabindex (only the selected tab in the tab sequence) but had no
+  arrow-key handler, so `Tab` stepped over the whole rail and nothing moved
+  between tabs: four of the five panels could not be reached by keyboard at all,
+  a WCAG 2.2 SC 2.1.1 (Level A) failure. `↑`/`↓`, `←`/`→` and `Home`/`End` now
+  move between tabs, with selection following focus.
+- **Form fields are no longer unlabeled.** PDF.js renders AcroForm widgets as
+  native inputs but never names them: it applies ARIA only from a structure tree
+  (which Vnyl does not use), and the field's `/TU` lands on the wrapping
+  `<section>` as a `title`, which does not name the input inside it. Every field
+  was an anonymous edit box to a screen reader, even in a correctly authored PDF
+  — a WCAG 2.2 SC 4.1.2 (Level A) failure. Each control now takes its
+  `aria-label` from the field's `/TU`, falling back to `/T`.
+- **The page canvas is now `aria-hidden`**, as the accessibility guide always
+  claimed it was. The text layer over it is the accessible representation.
+- **Filled form fields no longer render doubled and unreadable.** Field values
+  were rasterised into the page canvas *and* rendered as HTML inputs on top of
+  it, so both copies showed at once. The canvas render now passes
+  `annotationMode: ENABLE_FORMS`, which is what makes PDF.js leave widgets to the
+  annotation layer. Thumbnails, which have no input overlay, still paint values
+  into the canvas as before.
+- **Form fields could also be duplicated outright on a cold open.** Nothing
+  cancelled or serialised annotation-layer renders, so the fit-to-width scale
+  change landing mid-render let two passes interleave their appends into one
+  container and leave duplicate widgets stacked on each other. Layer renders are
+  now serialised per container and skip superseded passes. This was timing
+  dependent, which is why it tended to appear on a first open and not a reopen.
+- **The scroll keys did nothing until you clicked the page.** Focus stayed on
+  `<body>`, which cannot scroll, so arrows, `Home`/`End` and `Space` were dead on
+  arrival; opening find or the page box took focus away and never gave it back.
+  The viewer now takes focus when a document opens and gets it back when those
+  close, and the skip link points at the scroller instead of its non-scrolling
+  `<main>` wrapper.
+- **`Ctrl+F` could not close the find bar** from inside its own input.
+- **Fit-to-width** no longer overflows or flickers a horizontal scrollbar. The
+  viewer reserves the scrollbar gutter (`scrollbar-gutter: stable`), so the fit
+  width stays stable even when the vertical scrollbar appears after a fit.
+
+### Changed
+
+- **Dark mode is now unified across the UI and the page**, instead of a
+  separate reading-mode setting. The single light/dark/system toggle
+  (`theme.toggle`) darkens the UI chrome and inverts the rendered page
+  together. The old **normal / night / sepia / high-contrast reading modes**
+  are removed entirely, along with the `theme.cycleReadingMode` command, the
+  `data-reading-mode` attribute, and the contrast toolbar button that cycled
+  between them: night is effectively folded into the dark theme, and sepia and
+  high-contrast are gone. Page inversion moved from a CSS `filter` on the page
+  canvas, which some rendering engines re-rasterized and blurred at CSS
+  resolution, to a `globalCompositeOperation: 'difference'` fill applied
+  directly on the canvas in `PdfJsEngine.renderPage`, at the canvas's full
+  backing-store resolution, so dark pages are now sharp instead of soft.
+  Thumbnails still use the old CSS filter, since they're small enough that the
+  blur was never visible there. See the new **selectable dark reading
+  schemes** entry above and docs/theming.md.
+- **Rendering overhaul for crisper text on high-DPI and fractional-scaling
+  displays.** Page canvases now render above the display's own pixel density
+  (targeting roughly 2x, minimum 2, maximum 3) and are downsampled into the
+  page's layout size, capped by a pixel budget (`MAX_CANVAS_AREA`,
+  16,777,216px, matching PDF.js's own `maxCanvasPixels` default) and a
+  4096px-per-side maximum (`MAX_CANVAS_DIM`), which win unconditionally: at high
+  zoom on a large page the effective scale can fall below the display's
+  `devicePixelRatio`. (This entry originally claimed the render was *never* below
+  the display ratio, which was not accurate even at the time; the wording was
+  corrected later, see #29.) Previously the backing store was sized
+  close to CSS pixels, which read soft on fractional-scale displays (Windows
+  125%/150%) and on platforms that under-report DPI. The viewer also now
+  re-renders visible pages when `devicePixelRatio` changes mid-session, such as
+  when a window is dragged between monitors with different scaling.
+- **Page virtualization bounds memory on long documents.** Each page's canvas
+  backing store is released (dimensions zeroed, text and form layers cleared)
+  once it scrolls more than 600px out of the viewport, and is re-rendered when
+  it scrolls back into range, instead of every page a session had ever
+  displayed keeping its full-resolution canvas allocated indefinitely.
+- The in-app **"Set as default PDF viewer"** action now deep-links straight to
+  Vnyl's page in *Settings > Default apps* (via a `RegisteredApplications`
+  Capabilities entry written by the installer, `src-tauri/installer.nsh`), so you
+  no longer have to type ".pdf" to find the association. Takes effect on a fresh
+  install.
+
+## [0.2.0] - 2026-07-14
+
+### Added
+
+- **Default PDF viewer**: a `.pdf` file association (`bundle.fileAssociations`)
+  so the OS can open PDFs with Vnyl. Double-clicking a PDF opens it in Vnyl,
+  whether Vnyl is closed (launched with the file path via argv) or already
+  running (the file is routed to the existing window through single-instance).
+  Adds a "Make Vnyl your default PDF viewer" action on the start screen that
+  opens the OS Default apps settings, plus the `take_launch_file` and
+  `open_default_apps_settings` commands. Windows and Linux use the launch argv;
+  the macOS `Opened`-event path is wired but untested. See docs/testing.md.
+- **Editing toolkit (v0.4, phase 1)**: add **text boxes** (a typewriter tool with
+  a font / size / bold / color inspector) and place **images** (PNG/JPEG) on a
+  page, drag/resize both, and bake them into a saved copy (`stampEdits` via
+  pdf-lib `drawText`/`drawImage`). Additive only: existing PDF text is not
+  modified. New `src/features/editing` module and toolbar buttons. See
+  docs/editing-and-ocr.md.
+- **OCR (v0.4)**: recognize text in scanned pages with **tesseract.js** (English),
+  run fully offline and under the app CSP (worker + wasm core + model self-hosted
+  under `public/tesseract/`, populated by `scripts/setup-ocr-assets.mjs`, no CDN).
+  Recognized text is selectable on screen, feeds in-app search (find falls back to
+  OCR text on image-only pages), and is baked into a saved copy as an invisible,
+  searchable text layer. New `renderPageToImage` engine method and
+  `src/features/ocr` module (lazy-loaded so tesseract.js stays out of the initial
+  bundle). See docs/editing-and-ocr.md.
+
+## [0.1.0] - 2026-07-14
+
+### Added
+
+- Windows distribution: an **EV-signed NSIS installer** (OK Studio Inc. cert on a
+  SafeNet eToken) via `scripts/sign-windows.ps1` wired through
+  `bundle.windows.signCommand`, plus per-release CycloneDX SBOMs (npm + cargo)
+  and a dependency lockfile. See docs/releasing.md.
+- **Auto-update**: an in-app updater (`tauri-plugin-updater`) that checks GitHub
+  Releases on launch and installs minisign-verified updates; per-user install so
+  updates apply without a UAC prompt. `scripts/generate-latest.mjs` emits the
+  update manifest.
+- **Open PDFs in Vnyl from the browser**: a Chrome extension
+  (`extensions/chrome`) that renders PDFs in Vnyl's in-browser viewer or hands
+  them off to the desktop app via a new `folio://` deep link. Adds the deep-link,
+  single-instance, updater, and process plugins and a URL-validated `fetch_pdf`
+  command.
+- Test suites: a Vitest unit suite (49 tests across stores, the command
+  registry, the plugin host, keyboard shortcuts, and signing) and a Playwright
+  end-to-end smoke suite (open, render, fill a form field, and digitally sign),
+  plus a CI e2e job. See docs/testing.md.
+- Cryptographic digital signatures (v0.3, phase 2):
+  - Sign a document with a real PKCS#7 detached signature (via @signpdf and
+    node-forge) that PDF readers, including Acrobat, recognize.
+  - Signing identities: import a `.p12` / `.pfx`, or create a self-signed
+    certificate in-app. Stored passphrase-protected; the passphrase is never
+    saved.
+  - Opened signed PDFs list each signature with signer, signing time, and a
+    post-signing tamper check in the Signatures panel.
+  - New `sign.digitallySign` command, a toolbar shield button, and a Node
+    globals shim (`Buffer`/`process`) for the WebView. Certificate-chain trust
+    validation and a Rust/keychain backend remain planned.
+- Forms and signing (v0.3, phase 1):
+  - Fill interactive AcroForm fields (text, checkbox, radio, dropdown) rendered
+    over each page via the PDF.js annotation layer.
+  - Ink / visual signatures: create by drawing, typing, or uploading an image,
+    then place, drag, and resize on the page. Stored per document.
+  - Save a copy with form values written (PDF.js `saveDocument`) and signatures
+    stamped in (pdf-lib), via a native save dialog or browser download
+    (`Ctrl/Cmd + S`). Writing goes through the Rust `write_document` command
+    (see Changed).
+  - Certificate-based digital signatures remain planned (phase 2).
+- Initial project foundation (v0.1 scaffold):
+  - Tauri 2 desktop shell with a React 18 + TypeScript frontend (Vite).
+  - `PdfEngine` abstraction with a PDF.js implementation (rendering, text layer,
+    outline, metadata, and text search).
+  - Continuous, lazily-rendered page viewer with zoom, fit-width, and fit-page.
+  - Thumbnail strip, document outline, and find-in-document.
+  - Command registry driving all user actions and keyboard shortcuts.
+  - Plugin host and SDK (commands, toolbar items, sidebar panels, tools), plus a
+    built-in Word Count plugin.
+  - Text highlighting with per-document persistence and an annotations panel.
+  - Theming with light / dark / system and page reading modes (night, sepia,
+    high-contrast).
+  - Accessibility foundation: text layer, keyboard control, ARIA landmarks,
+    skip link, and live-region announcements.
+  - Provider-agnostic AI layer (Claude, opt-in) with MCP client/server stubs.
+  - Documentation set, CI, and community-health files.
+
+### Changed
+
+- PDF writes moved to a Rust `write_document` command; the frontend no longer
+  uses the fs plugin's `writeFile`, and the broad `fs:allow-write-file`
+  (`$HOME/**`) capability was removed. Save-anywhere still works via the
+  dialog-chosen path.
+- Bumped Vite 5 to 7 and Vitest 2 to 4 (clears the vite/vitest/esbuild dev-only
+  advisories).
+
+### Security
+
+- Added a strict Tauri Content Security Policy (`app.security.csp`), replacing
+  the previous unset policy.
+- Pinned GitHub Actions to commit SHAs with `persist-credentials: false`; added
+  a security-scan CI workflow, pre-commit hooks (gitleaks + pinact), and a
+  cargo-deny policy.
+
+[Unreleased]: https://github.com/owenpkent/folio/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/owenpkent/folio/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/owenpkent/folio/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/owenpkent/folio/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/owenpkent/folio/compare/v0.3.1...v0.4.0
+[0.3.1]: https://github.com/owenpkent/folio/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/owenpkent/folio/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/owenpkent/folio/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/owenpkent/folio/releases/tag/v0.1.0
