@@ -1,4 +1,4 @@
-<div align="center">
+﻿<div align="center">
 
 # Vnyl
 
@@ -43,22 +43,11 @@ Open **Tools > All tools** (`Ctrl/Cmd+Shift+K`) for the full gallery, and
 
 ## Screenshots
 
-The Liquid Glass look, in light and dark, with markup on the page:
+Captured from the current Windows desktop build of Vnyl:
 
-| Light | Dark |
+| Current app home | Open document dialog |
 | :---: | :---: |
-| ![Vnyl in light mode](docs/screenshots/document-light.png) | ![Vnyl in dark mode](docs/screenshots/document-dark.png) |
-
-| Tools gallery | Split view |
-| :---: | :---: |
-| ![The tools gallery](docs/screenshots/tools-hub.png) | ![Two documents side by side](docs/screenshots/split-view.png) |
-
-| Compare documents | Start screen |
-| :---: | :---: |
-| ![Visual comparison of two versions](docs/screenshots/compare.png) | ![The start screen with recent files](docs/screenshots/start-screen.png) |
-
-Prefer the original flat look? **Appearance > Interface style > Classic.**
-
+| ![Current Vnyl home screen](docs/screenshots/current-home.png) | ![Current Vnyl open document dialog](docs/screenshots/open-document-dialog.png) |
 ## Features
 
 **Reading**
@@ -155,8 +144,8 @@ Prefer the original flat look? **Appearance > Interface style > Classic.**
 
 **Desktop and distribution**
 - EV-signed Windows installer; installs per-user and **auto-updates** from GitHub Releases. Restarting to finish an update reopens the document you had open, at the page you were on, since that restart is one Vnyl asked for rather than one you chose
-- Set Vnyl as your **default PDF viewer**: pick it from *Open with*, or use the start-screen shortcut into *Settings → Default apps*, and double-clicking a `.pdf` opens it in Vnyl (Windows reserves the actual switch for the user, so Vnyl cannot silently take over a default the user already chose)
-- **Replace Chrome's PDF reader**: a Chrome extension opens PDFs in Vnyl's viewer instead, catching them by content-type as well as by `.pdf` URL, so documents served from behind an app (`/download?id=…`) are caught too. Choose per-site, or turn it off; or hand the document to the desktop app via a `vnyl://` deep link
+- Set Vnyl as your **default PDF viewer**: pick it from *Open with*, or use the start-screen shortcut into *Settings â†’ Default apps*, and double-clicking a `.pdf` opens it in Vnyl (Windows reserves the actual switch for the user, so Vnyl cannot silently take over a default the user already chose)
+- **Replace Chrome's PDF reader**: a Chrome extension opens PDFs in Vnyl's viewer instead, catching them by content-type as well as by `.pdf` URL, so documents served from behind an app (`/download?id=â€¦`) are caught too. Choose per-site, or turn it off; or hand the document to the desktop app via a `vnyl://` deep link
 - **About dialog** with app version, commit hash, and build date, plus desktop release updates
 
 **AI-ready**
@@ -229,7 +218,7 @@ npm run typecheck    # tsc --noEmit
 | Find in document  | `Ctrl/Cmd + F`              |
 | Zoom in / out     | `Ctrl/Cmd + =` / `Ctrl/Cmd + -` |
 | Actual size       | `Ctrl/Cmd + 0`              |
-| Next / prev page  | `→` / `←`                   |
+| Next / prev page  | `â†’` / `â†`                   |
 | Scroll up / down  | `Page Up` / `Page Down`     |
 | First / last page | `Ctrl/Cmd + Home` / `End`   |
 | Toggle sidebar    | `Ctrl/Cmd + B`              |
@@ -244,26 +233,26 @@ The complete list, plus the accessibility model, is in
 
 ```
 vnyl/
-├─ src/                  React + TypeScript frontend
-│  ├─ core/pdf/          PdfEngine interface + PDF.js implementation
-│  ├─ commands/          command registry (every user action)
-│  ├─ components/        Viewer, MenuBar, Toolbar, Sidebar, Search, common
-│  ├─ features/          annotations, editing, placement, textedit, imageedit, ocr, signatures, combine, pageops, links, updates, save/export
-│  ├─ plugins/           plugin host, SDK types, built-in Word Count plugin
-│  ├─ ai/                provider-agnostic AI layer (Claude, experimental) + MCP stubs
-│  ├─ theme/             tokens, ThemeProvider, dark schemes, breakpoints
-│  ├─ hooks/             shared React hooks (media queries, DPI-change watch)
-│  ├─ a11y/              announcer, focus, keyboard shortcuts
-│  ├─ state/             Zustand stores
-│  ├─ styles/            global CSS
-│  ├─ assets/            app-icon source (vnyl-logo.svg)
-│  └─ test/              test setup
-├─ src-tauri/            Rust backend (file IO, native shell)
-├─ extensions/chrome/    Chrome extension: Vnyl's viewer instead of Chrome's PDF reader
-├─ extensions/vscode/    VS Code extension: view PDFs in an editor tab (preview)
-├─ e2e/                  Playwright end-to-end suite
-├─ scripts/              build, release, and version/manifest parity checks
-└─ docs/                 architecture, accessibility, theming, plugins, AI
+â”œâ”€ src/                  React + TypeScript frontend
+â”‚  â”œâ”€ core/pdf/          PdfEngine interface + PDF.js implementation
+â”‚  â”œâ”€ commands/          command registry (every user action)
+â”‚  â”œâ”€ components/        Viewer, MenuBar, Toolbar, Sidebar, Search, common
+â”‚  â”œâ”€ features/          annotations, editing, placement, textedit, imageedit, ocr, signatures, combine, pageops, links, updates, save/export
+â”‚  â”œâ”€ plugins/           plugin host, SDK types, built-in Word Count plugin
+â”‚  â”œâ”€ ai/                provider-agnostic AI layer (Claude, experimental) + MCP stubs
+â”‚  â”œâ”€ theme/             tokens, ThemeProvider, dark schemes, breakpoints
+â”‚  â”œâ”€ hooks/             shared React hooks (media queries, DPI-change watch)
+â”‚  â”œâ”€ a11y/              announcer, focus, keyboard shortcuts
+â”‚  â”œâ”€ state/             Zustand stores
+â”‚  â”œâ”€ styles/            global CSS
+â”‚  â”œâ”€ assets/            app-icon source (vnyl-logo.svg)
+â”‚  â””â”€ test/              test setup
+â”œâ”€ src-tauri/            Rust backend (file IO, native shell)
+â”œâ”€ extensions/chrome/    Chrome extension: Vnyl's viewer instead of Chrome's PDF reader
+â”œâ”€ extensions/vscode/    VS Code extension: view PDFs in an editor tab (preview)
+â”œâ”€ e2e/                  Playwright end-to-end suite
+â”œâ”€ scripts/              build, release, and version/manifest parity checks
+â””â”€ docs/                 architecture, accessibility, theming, plugins, AI
 ```
 
 Architecture deep-dive: [docs/architecture.md](docs/architecture.md).
@@ -298,4 +287,5 @@ tracker.
 
 ## License
 
-[MIT](LICENSE) © 2026 the Vnyl contributors.
+[MIT](LICENSE) Â© 2026 the Vnyl contributors.
+
