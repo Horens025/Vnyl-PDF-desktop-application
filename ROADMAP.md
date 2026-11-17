@@ -138,4 +138,4 @@ This is an open-source project and the roadmap is meant to be shaped by its user
 - **Prototype it as a plugin.** Many ideas can ship first as a plugin against the public API (see [docs/plugins.md](./docs/plugins.md)). A working plugin is the strongest possible case for pulling a capability into core.
 - **Contribute.** Pick up an issue, or open a draft PR for discussion. Accessibility and performance are release gates, so land features with keyboard support, labeling, and no regressions from the start.
 
-License: MIT. Contact: Owenpkent@gmail.com.
+License: MIT. [Vnyl project page](https://github.com/Horens025/Vnyl-PDF-desktop-application).

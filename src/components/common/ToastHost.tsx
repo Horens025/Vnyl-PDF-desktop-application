@@ -1,0 +1,28 @@
+import { useToastStore } from './toastStore';
+
+/** Renders transient notifications in the corner of the window. */
+export function ToastHost() {
+  const toasts = useToastStore((s) => s.toasts);
+  const dismiss = useToastStore((s) => s.dismiss);
+
+  if (toasts.length === 0) return null;
+
+  return (
+    <div className="vnyl-toast-host" role="region" aria-label="Notifications">
+      {toasts.map((toast) => (
+        <div key={toast.id} className={`vnyl-toast vnyl-toast--${toast.kind}`} role="status">
+          <span className="vnyl-toast__message">{toast.message}</span>
+          <button
+            type="button"
+            className="vnyl-toast__close"
+            aria-label="Dismiss notification"
+            title="Dismiss"
+            onClick={() => dismiss(toast.id)}
+          >
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}

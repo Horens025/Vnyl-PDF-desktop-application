@@ -8,7 +8,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.8.0] - 2026-11-02
 
-The product is now **Vnyl** (formerly Folio), with a new Liquid Glass look, several
+The product is now **Vnyl**, with a new Liquid Glass look, several
 documents at once, and a set of conversion tools.
 
 ### Added
@@ -60,7 +60,7 @@ documents at once, and a set of conversion tools.
   (axe reports no violations on the start screen, document, tools gallery, tool
   panels or shortcuts dialog).
 - Dialogs that ask for `size="wide"` (Organize pages) were never wide: the base
-  `.folio-modal` width overrode the modifier on source order.
+  `.vnyl-modal` width overrode the modifier on source order.
 - **Edit markup on the page**: click an existing highlight, underline,
   strikethrough or squiggly to recolor it, change a highlight's opacity, or
   delete it.
@@ -154,7 +154,7 @@ documents at once, and a set of conversion tools.
   because that update lands on some future launch started for other reasons,
   and reopening a days-old document at that point is a surprise rather than a
   convenience. Only for documents that came from disk, since a file picked in
-  the browser or fetched through a `folio://` link has no path to reopen. The
+  the browser or fetched through a `vnyl://` link has no path to reopen. The
   note is consumed on the next launch whether or not it is used, so it can
   never reopen twice, and a file the OS hands Vnyl to open takes priority over
   it. If the restart itself fails, the note goes with it rather than waiting to
@@ -402,7 +402,7 @@ documents at once, and a set of conversion tools.
   way to point `.pdf` at it. Tauri's `bundle.fileAssociations` writes the ProgID
   and the `.pdf` default value, but not the two keys Explorer actually builds
   the picker from -- `Software\Classes\.pdf\OpenWithProgids` and
-  `Software\Classes\Applications\folio.exe` (with `FriendlyAppName`,
+  `Software\Classes\Applications\vnyl.exe` (with `FriendlyAppName`,
   `SupportedTypes`, and an open command). `src-tauri/installer.nsh` now writes
   both, adds an `Application` subkey so the entry is labelled **Vnyl** rather
   than "Portable Document Format document", and fires `SHCNE_ASSOCCHANGED` so
@@ -430,7 +430,7 @@ documents at once, and a set of conversion tools.
 
 ### Security
 
-- The URL handed to the desktop app over `folio://` is scheme-checked before the
+- The URL handed to the desktop app over `vnyl://` is scheme-checked before the
   link is built. It can be recovered from the viewer's fragment, which is chosen
   by whatever navigated there, so a page could park the user on the viewer with
   `#file=javascript:…` and wait for a toolbar click. The desktop side already
@@ -546,7 +546,7 @@ documents at once, and a set of conversion tools.
   (`npm run test:e2e:preview`, and a second CI step). Every spec previously ran
   only against the dev server, which ships each module roughly as authored, so
   nothing exercised the bundler or its minifier. The Vite 8 bump
-  ([#62](https://github.com/owenpkent/folio/pull/62)) proved what that costs: it
+  (#62) proved what that costs: it
   broke digital signing in the built app, and `tsc` could not see it (it reads
   the `.d.ts`), Vitest could not see it (Node's interop matches esbuild), and the
   dev-server run caught it only because the dep optimizer happened to agree with
@@ -632,8 +632,8 @@ documents at once, and a set of conversion tools.
   high/critical as blocking" was becoming impossible to follow literally: the
   gate that blocks a release is Dependabot, and `npm audit` additionally reports
   findings that cannot be fixed from this repository at all
-  ([#57](https://github.com/owenpkent/folio/issues/57),
-  [#58](https://github.com/owenpkent/folio/issues/58)). The Dependabot section
+  (#57,
+  #58). The Dependabot section
   also described major upgrades as never grouped, which stopped being true when
   cohort grouping landed.
 - **The two causes of a dependency PR dying at `npm ci` are named separately**,
@@ -654,7 +654,7 @@ documents at once, and a set of conversion tools.
 ### Fixed
 
 - **The densest displays no longer render below their own pixel density**
-  ([#29](https://github.com/owenpkent/folio/issues/29)). The backing-store scale
+  (#29). The backing-store scale
   aimed for "at least 2x, at most 3x", so a panel reporting a `devicePixelRatio`
   above 3 was handed a 3x render that it then had to stretch. The 3x ceiling is
   gone: the target is now the greater of 2x and the display's own ratio, bounded
@@ -663,7 +663,7 @@ documents at once, and a set of conversion tools.
   bust the budget — was already fixed; the docs and an old release note that
   still claimed the render was never below the display ratio are corrected here.
 - **Re-render on DPI change now works on fractional-scaling displays**
-  ([#30](https://github.com/owenpkent/folio/issues/30)). Detection built a
+  (#30). Detection built a
   `matchMedia('(resolution: Xdppx)')` query by interpolating
   `window.devicePixelRatio`, relying on it evaluating true so that any change
   would flip it false and fire. Windows at 133% reports 1.3333333333333333, and
@@ -710,12 +710,12 @@ documents at once, and a set of conversion tools.
   favicon, so anything that ran Vnyl from the dev server or a browser -- the
   Chromium app window `run.py dev` opens, above all, where the favicon *is* the
   title-bar icon -- showed the browser's default globe. It points at the same
-  `folio-logo.svg` the desktop icon set is generated from, so the tab, the app
+  `vnyl-logo.svg` the desktop icon set is generated from, so the tab, the app
   window, and the installed app all show one mark. The packaged desktop build
   was never affected; Tauri embeds its icons in the binary.
 - **Opening a large PDF no longer white-screens the app.** The thumbnail
   sidebar's lazy loading was inert: its `IntersectionObserver` was rooted at
-  `.folio-thumbnails`, which is not the element that scrolls. With an element
+  `.vnyl-thumbnails`, which is not the element that scrolls. With an element
   root, `IntersectionObserver` clips only against containers *between* target and
   root and never above it, so the unclipped inner wrapper reported **every**
   thumbnail in the document as visible in the first observation batch. Every page
@@ -786,7 +786,7 @@ documents at once, and a set of conversion tools.
   `VariantStrIter`, fixed upstream in 0.20.0. The version here is pinned
   transitively by Tauri's Linux stack, so it cannot be moved from this
   repository, and it is not in the Windows build that ships. Tracked in
-  [#58](https://github.com/owenpkent/folio/issues/58); the release checklist
+  #58; the release checklist
   gates on high and critical only.
 
 ## [0.4.0] - 2026-07-23
@@ -881,7 +881,7 @@ documents at once, and a set of conversion tools.
 
 ### Security
 
-- **Hardened the `fetch_pdf` browser hand-off against SSRF.** The `folio://`
+- **Hardened the `fetch_pdf` browser hand-off against SSRF.** The `vnyl://`
   deep link can be triggered by any web page, so the download command now
   resolves the target host and rejects the request if any resolved IP is
   loopback, private, link-local (including the `169.254.169.254` cloud-metadata
@@ -965,7 +965,7 @@ documents at once, and a set of conversion tools.
   white-on-black), **Green**, and **Amber**, chosen from a new toolbar dropdown
   (`DarkSchemeMenu`) next to the light/dark toggle. The choice is tied to dark
   mode - light mode always shows the page as authored - and is persisted
-  (`darkScheme` in `themeStore`, `folio.darkScheme` in local storage, default
+  (`darkScheme` in `themeStore`, `vnyl.darkScheme` in local storage, default
   `night`).
 - **`Page Up` / `Page Down` scroll the document**, as the `nav.scrollUp` /
   `nav.scrollDown` commands. They are bound as commands rather than left to the
@@ -1109,7 +1109,7 @@ documents at once, and a set of conversion tools.
 
 ### Added
 
-- Windows distribution: an **EV-signed NSIS installer** (OK Studio Inc. cert on a
+- Windows distribution: an **EV-signed NSIS installer** (publisher certificate on a
   SafeNet eToken) via `scripts/sign-windows.ps1` wired through
   `bundle.windows.signCommand`, plus per-release CycloneDX SBOMs (npm + cargo)
   and a dependency lockfile. See docs/releasing.md.
@@ -1119,7 +1119,7 @@ documents at once, and a set of conversion tools.
   update manifest.
 - **Open PDFs in Vnyl from the browser**: a Chrome extension
   (`extensions/chrome`) that renders PDFs in Vnyl's in-browser viewer or hands
-  them off to the desktop app via a new `folio://` deep link. Adds the deep-link,
+  them off to the desktop app via a new `vnyl://` deep link. Adds the deep-link,
   single-instance, updater, and process plugins and a URL-validated `fetch_pdf`
   command.
 - Test suites: a Vitest unit suite (49 tests across stores, the command
@@ -1181,12 +1181,3 @@ documents at once, and a set of conversion tools.
   a security-scan CI workflow, pre-commit hooks (gitleaks + pinact), and a
   cargo-deny policy.
 
-[Unreleased]: https://github.com/owenpkent/folio/compare/v0.7.0...HEAD
-[0.7.0]: https://github.com/owenpkent/folio/compare/v0.6.0...v0.7.0
-[0.6.0]: https://github.com/owenpkent/folio/compare/v0.5.0...v0.6.0
-[0.5.0]: https://github.com/owenpkent/folio/compare/v0.4.0...v0.5.0
-[0.4.0]: https://github.com/owenpkent/folio/compare/v0.3.1...v0.4.0
-[0.3.1]: https://github.com/owenpkent/folio/compare/v0.3.0...v0.3.1
-[0.3.0]: https://github.com/owenpkent/folio/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/owenpkent/folio/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/owenpkent/folio/releases/tag/v0.1.0

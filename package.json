@@ -1,17 +1,17 @@
 {
-  "name": "folio",
+  "name": "vnyl",
   "version": "0.8.0",
   "description": "A world-class, open-source PDF viewer. Fast, accessible, extensible, dark-mode native.",
   "type": "module",
   "license": "MIT",
   "private": true,
-  "homepage": "https://github.com/owenpkent/folio",
+  "homepage": "https://github.com/Horens025/Vnyl-PDF-desktop-application",
   "repository": {
     "type": "git",
-    "url": "https://github.com/owenpkent/folio.git"
+    "url": "https://github.com/Horens025/Vnyl-PDF-desktop-application.git"
   },
   "bugs": {
-    "url": "https://github.com/owenpkent/folio/issues"
+    "url": "https://github.com/Horens025/Vnyl-PDF-desktop-application/issues"
   },
   "keywords": [
     "pdf",
@@ -34,6 +34,7 @@
     "preview": "vite preview",
     "setup:ocr": "node scripts/setup-ocr-assets.mjs",
     "tauri": "tauri",
+    "tauri:build:local": "tauri build --config src-tauri/tauri.local.conf.json",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -41,6 +42,7 @@
     "typecheck": "tsc --noEmit",
     "check:versions": "node scripts/check-tauri-versions.mjs && node scripts/check-extension-version.mjs",
     "check:extension": "node scripts/check-extension-version.mjs && node scripts/check-extension-manifest.mjs",
+    "release:manifest": "node scripts/generate-latest.mjs",
     "build:chrome": "node extensions/chrome/build.mjs",
     "package:chrome": "node extensions/chrome/build.mjs --zip",
     "test": "vitest run",
@@ -51,7 +53,6 @@
     "corpus:fetch": "node scripts/corpus/fetch-pdfjs-corpus.mjs",
     "test:e2e": "playwright test",
     "test:e2e:preview": "playwright test -c playwright.preview.config.ts",
-    "release:manifest": "node scripts/generate-latest.mjs",
     "release:sbom": "node scripts/generate-sbom.mjs"
   },
   "dependencies": {

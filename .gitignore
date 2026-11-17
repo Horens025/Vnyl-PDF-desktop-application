@@ -13,6 +13,7 @@ public/tesseract/
 # Tauri
 src-tauri/target/
 src-tauri/gen/
+.tauri/
 
 # Release artifacts (signed installers, SBOMs) — collected locally, published to Releases
 /release/

@@ -1,0 +1,168 @@
+version: 2
+updates:
+  # Frontend npm dependencies. Minor + patch bumps are grouped into a single
+  # monthly PR (always installs cleanly). Major bumps are intentionally left
+  # ungrouped so Dependabot opens each as its own PR: breaking upgrades (e.g.
+  # pdfjs-dist, react, eslint) must be reviewed and migrated individually, not
+  # batched into one unmergeable PR.
+  #
+  # The grouped majors below are *cohorts*: packages whose peer ranges pin them
+  # to each other, so a PR bumping one alone cannot even `npm ci`, let alone
+  # tell us anything about whether the upgrade works. react-dom@19 peers on
+  # react@^19 and @types/react-dom@19 peers on @types/react@^19, so splitting
+  # them produced two permanently red PRs (#20, #21) that said nothing about
+  # React 19; @eslint/js@10 peers on eslint@^10 the same way (#22). Grouping the
+  # cohort keeps one dedicated, reviewable PR per breaking upgrade -- the intent
+  # above -- while making that PR installable.
+  #
+  # Adding a cohort is NOT the fix for every install failure. An `ERESOLVE` at
+  # `npm ci` has two causes that print the same error: a cohort member left
+  # behind when a compatible release exists (fix it here), or upstream not
+  # having shipped support at all, where no group change helps and the PR simply
+  # waits. #47 was the second kind: `eslint-plugin-*` below already matches
+  # eslint-plugin-jsx-a11y, which had no eslint 10 release to move to. Check
+  # `npm view <pkg> peerDependencies` before editing this file, and do not reach
+  # for --legacy-peer-deps in either case -- CI runs `npm ci` and would fail
+  # anyway. See the Dependabot section of CONTRIBUTING.md.
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      react-major:
+        applies-to: version-updates
+        patterns:
+          - react
+          - react-dom
+          - "@types/react"
+          - "@types/react-dom"
+        update-types:
+          - "major"
+      eslint-major:
+        applies-to: version-updates
+        patterns:
+          - eslint
+          - "@eslint/*"
+          - typescript-eslint
+          - "eslint-plugin-*"
+        update-types:
+          - "major"
+      # Demonstrated by #50 and #51, the same half-bump as #20/#21 in a cohort the
+      # first pass missed: @vitejs/plugin-react@6 peers on vite@^8 while
+      # plugin-react@4 caps at vite@7, so neither package can cross a major on its
+      # own and both PRs failed at `npm ci`.
+      vite-major:
+        applies-to: version-updates
+        patterns:
+          - vite
+          - "@vitejs/*"
+        update-types:
+          - "major"
+      # Preventive rather than demonstrated: @vitest/coverage-v8 peers on the exact
+      # vitest version, so a vitest major has the identical problem the moment one
+      # is published. Grouped now while the reasoning is in front of us, rather
+      # than after another pair of permanently red PRs.
+      vitest-major:
+        applies-to: version-updates
+        patterns:
+          - vitest
+          - "@vitest/*"
+        update-types:
+          - "major"
+      # Tauri patch bumps get their own PR so the auto-merge workflow can skip
+      # them (and only them) without holding back the rest of npm-minor.
+      tauri-npm:
+        patterns:
+          - "@tauri-apps/*"
+        update-types:
+          - "minor"
+          - "patch"
+      npm-minor:
+        patterns: ["*"]
+        update-types:
+          - "minor"
+          - "patch"
+      npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
+    # Tauri is a cohort that spans ecosystems: the Tauri CLI and
+    # scripts/check-tauri-versions.mjs both require @tauri-apps/* (here) and the
+    # tauri crates (cargo entry below) to share a major.minor, plugins pairwise
+    # included. Dependabot cannot group across ecosystems without moving
+    # commit-message off both entries, so each side bumped alone: #99 took
+    # @tauri-apps/api to 2.12 while #98 took tauri to 2.12, and both stayed red
+    # until they were merged as one PR (#101). Minor and major Tauri bumps are
+    # therefore ignored on both sides and done by hand in a single PR that moves
+    # both lockfiles. Patch bumps stay in the groups above and usually keep
+    # parity, but not always: a crate patch can require a paired plugin's next
+    # minor, which `ignore` cannot see because it is a transitive move
+    # (tauri-plugin-single-instance 2.5.1 pulled tauri-plugin-deep-link to 2.6 in
+    # #104 while #103 bumped the npm side). When an npm and a cargo PR both fail
+    # the Tauri build on a plugin mismatch, land them together as one PR, as #101
+    # did. `ignore` also applies to security updates: a fix that needs a Tauri
+    # minor still raises an alert (the release gate) but gets no automatic PR.
+    ignore:
+      - dependency-name: "@tauri-apps/*"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
+    labels:
+      - dependencies
+      - javascript
+    commit-message:
+      prefix: chore
+      include: scope
+
+  # Rust / Cargo dependencies for the Tauri backend.
+  - package-ecosystem: cargo
+    directory: "/src-tauri"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      # Same split as tauri-npm above: Tauri crates are never auto-merged.
+      tauri-cargo:
+        patterns:
+          - "tauri"
+          - "tauri-*"
+      cargo:
+        patterns: ["*"]
+      cargo-security:
+        applies-to: security-updates
+        patterns: ["*"]
+    # The other half of the Tauri cohort; see the npm entry above.
+    ignore:
+      - dependency-name: "tauri"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
+      - dependency-name: "tauri-*"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
+    labels:
+      - dependencies
+      - rust
+    commit-message:
+      prefix: chore
+      include: scope
+
+  # GitHub Actions used in workflows.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      github-actions:
+        patterns: ["*"]
+      github-actions-security:
+        applies-to: security-updates
+        patterns: ["*"]
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: ci
+      include: scope

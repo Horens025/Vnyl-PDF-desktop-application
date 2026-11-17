@@ -12,7 +12,7 @@
       rewrites and hashes link hrefs in this file, and a second copy of the
       artwork would be a copy nobody remembers to update.
     -->
-    <link rel="icon" type="image/svg+xml" href="/src/assets/folio-logo.svg" />
+    <link rel="icon" type="image/svg+xml" href="/src/assets/vnyl-logo.svg" />
     <!--
       No-flash theme bootstrap: apply the saved (or system) theme before first
       paint so the app never flashes the wrong background. Kept tiny and inline
@@ -21,17 +21,26 @@
     <script>
       (function () {
         try {
-          var stored = localStorage.getItem('folio.theme') || 'system';
+          // Carry settings and document annotations forward from pre-rebrand
+          // installs without keeping the old storage namespace in active use.
+          Object.keys(localStorage).forEach(function (key) {
+            if (!key.startsWith('folio.') && !key.startsWith('folio:')) return;
+            var nextKey = key.replace(/^folio(?=[.:])/, 'vnyl');
+            if (localStorage.getItem(nextKey) === null) {
+              localStorage.setItem(nextKey, localStorage.getItem(key));
+            }
+          });
+          var stored = localStorage.getItem('vnyl.theme') || 'system';
           var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
           var dark = stored === 'dark' || (stored === 'system' && prefersDark);
           document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
           document.documentElement.setAttribute(
             'data-style',
-            localStorage.getItem('folio.style') === 'classic' ? 'classic' : 'glass',
+            localStorage.getItem('vnyl.style') === 'classic' ? 'classic' : 'glass',
           );
           document.documentElement.setAttribute(
             'data-glass',
-            localStorage.getItem('folio.glass') === 'clear' ? 'clear' : 'frosted',
+            localStorage.getItem('vnyl.glass') === 'clear' ? 'clear' : 'frosted',
           );
         } catch (e) {
           /* localStorage may be unavailable; default styling still applies. */

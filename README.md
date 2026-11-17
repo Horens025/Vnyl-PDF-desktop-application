@@ -156,8 +156,8 @@ Prefer the original flat look? **Appearance > Interface style > Classic.**
 **Desktop and distribution**
 - EV-signed Windows installer; installs per-user and **auto-updates** from GitHub Releases. Restarting to finish an update reopens the document you had open, at the page you were on, since that restart is one Vnyl asked for rather than one you chose
 - Set Vnyl as your **default PDF viewer**: pick it from *Open with*, or use the start-screen shortcut into *Settings → Default apps*, and double-clicking a `.pdf` opens it in Vnyl (Windows reserves the actual switch for the user, so Vnyl cannot silently take over a default the user already chose)
-- **Replace Chrome's PDF reader**: a Chrome extension opens PDFs in Vnyl's viewer instead, catching them by content-type as well as by `.pdf` URL, so documents served from behind an app (`/download?id=…`) are caught too. Choose per-site, or turn it off; or hand the document to the desktop app via a `folio://` deep link
-- **About dialog** with app version, commit hash, and build date, plus a manual "Check for updates" action (desktop)
+- **Replace Chrome's PDF reader**: a Chrome extension opens PDFs in Vnyl's viewer instead, catching them by content-type as well as by `.pdf` URL, so documents served from behind an app (`/download?id=…`) are caught too. Choose per-site, or turn it off; or hand the document to the desktop app via a `vnyl://` deep link
+- **About dialog** with app version, commit hash, and build date, plus desktop release updates
 
 **AI-ready**
 - A provider-agnostic AI layer with an experimental, opt-in Claude provider (bring-your-own-key)
@@ -215,7 +215,7 @@ npm run typecheck    # tsc --noEmit
 ```
 
 > First-time build note: app icons must exist for Tauri to compile. Generate
-> them once with `npm run tauri icon src/assets/folio-logo.svg` (see
+> them once with `npm run tauri icon src/assets/vnyl-logo.svg` (see
 > [src-tauri/icons/README.md](src-tauri/icons/README.md)).
 
 ## Keyboard shortcuts
@@ -243,7 +243,7 @@ The complete list, plus the accessibility model, is in
 ## Project structure
 
 ```
-folio/
+vnyl/
 ├─ src/                  React + TypeScript frontend
 │  ├─ core/pdf/          PdfEngine interface + PDF.js implementation
 │  ├─ commands/          command registry (every user action)
@@ -256,7 +256,7 @@ folio/
 │  ├─ a11y/              announcer, focus, keyboard shortcuts
 │  ├─ state/             Zustand stores
 │  ├─ styles/            global CSS
-│  ├─ assets/            app-icon source (folio-logo.svg)
+│  ├─ assets/            app-icon source (vnyl-logo.svg)
 │  └─ test/              test setup
 ├─ src-tauri/            Rust backend (file IO, native shell)
 ├─ extensions/chrome/    Chrome extension: Vnyl's viewer instead of Chrome's PDF reader
@@ -270,6 +270,7 @@ Architecture deep-dive: [docs/architecture.md](docs/architecture.md).
 
 ## Documentation
 
+- [Install guide](INSTALL.md): build and install Vnyl on Windows, macOS or Linux
 - [User guide](docs/user-guide.md): a quick tour of everyday use
 
 - [Getting started](docs/getting-started.md)
@@ -283,7 +284,7 @@ Architecture deep-dive: [docs/architecture.md](docs/architecture.md).
 - [Writing plugins](docs/plugins.md)
 - [AI and MCP](docs/ai.md)
 - [Testing](docs/testing.md)
-- [Releasing](docs/releasing.md) (signed installer + auto-updater) and the [release checklist](docs/release-checklist.md)
+- [Releasing](docs/releasing.md) (Windows installer packaging) and the [release checklist](docs/release-checklist.md)
 - [VS Code extension](extensions/vscode/README.md) (preview: view PDFs in an editor tab)
 - [Chrome extension](extensions/chrome/README.md) (replace Chrome's PDF reader with Vnyl's viewer, or hand the document to the desktop app)
 - [Browser extension privacy policy](docs/browser-extension-privacy.md)

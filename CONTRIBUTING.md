@@ -6,8 +6,8 @@ quality on the desktop. Whether you are fixing a typo, filing a bug, building a
 plugin, or landing a major feature, you are welcome here.
 
 This guide explains how to set up your environment, how we work, and what we
-expect from a pull request. If anything is unclear, open a
-[Discussion](https://github.com/owenpkent/folio/discussions) and we will help.
+expect from a pull request. Questions and discussions belong in the [Vnyl
+repository](https://github.com/Horens025/Vnyl-PDF-desktop-application/discussions).
 
 ---
 
@@ -34,8 +34,8 @@ expect from a pull request. If anything is unclear, open a
 
 This project and everyone participating in it is governed by the
 [Vnyl Code of Conduct](./CODE_OF_CONDUCT.md). By participating, you are
-expected to uphold this code. Please report unacceptable behavior to
-Owenpkent@gmail.com.
+expected to uphold this code. Report unacceptable behavior through the [Vnyl
+repository](https://github.com/Horens025/Vnyl-PDF-desktop-application/issues).
 
 ---
 
@@ -91,8 +91,8 @@ The short version:
 ### Install and run
 
 ```bash
-git clone https://github.com/owenpkent/folio.git
-cd folio
+git clone https://github.com/Horens025/Vnyl-PDF-desktop-application.git
+cd vnyl
 npm ci                 # install exact dependencies from the lockfile
 npm run tauri dev      # launch the desktop app with hot reload
 ```
@@ -154,7 +154,8 @@ A quick map so you know where things live:
    npm run test
    ```
 
-6. **Push** and open a pull request against `owenpkent/folio:main`. Fill in the
+6. **Push** and open a pull request against
+   `Horens025/Vnyl-PDF-desktop-application`. Fill in the
    PR template completely, and link the issue your PR addresses (for example,
    `Closes #123`).
 7. Mark the PR as a **draft** if it is still a work in progress.
@@ -309,12 +310,12 @@ organized and what is covered. All tests must pass in CI before a PR can merge.
   two disagree, because `npm audit` counts an advisory once per dependency path
   and reports findings that cannot be fixed from here at all. One is open and
   documented, with the evidence for why it is unfixable or does not apply:
-  [#58](https://github.com/owenpkent/folio/issues/58) (`glib`, Linux-only, pinned
+  #58 (`glib`, Linux-only, pinned
   by Tauri). `node-forge` (GHSA-86w9-cpqp-85rv, no patched release) used to be on
   this list; it was removed from the dependency tree instead, and the header of
   `src/features/signing/verify.ts` records why RSA verification must use
   WebCrypto. Add to that list rather than silently carrying a finding.
-  ([#57](https://github.com/owenpkent/folio/issues/57), `brace-expansion`, was
+  (#57, `brace-expansion`, was
   resolved once eslint's `minimatch@3` resolved a patched copy.)
 - **Dependabot** opens monthly update PRs (npm, cargo, GitHub Actions), grouped
   to cut noise. For npm, **minor and patch** bumps are grouped into a single PR
@@ -362,7 +363,7 @@ organized and what is covered. All tests must pass in CI before a PR can merge.
 
   Case 2 has exactly one exception: a peer range that is **stale metadata**
   rather than a real incompatibility. It has to be earned with evidence, never
-  assumed. That is [#47](https://github.com/owenpkent/folio/pull/47).
+  assumed. That is #47.
   `eslint-plugin-jsx-a11y@6.10.2` is still the latest release and caps eslint at
   `^9`, but it touches only `context.report`, `context.options`, and
   `context.settings`. None of the context APIs eslint 10 removed (`getScope`,
@@ -404,7 +405,7 @@ we ask you to start with a proposal rather than a large surprise PR:
    [SECURITY.md](./SECURITY.md) for our plugin trust model and AI/MCP
    data-handling scope.
 3. Discuss the design in the issue or a
-   [Discussion](https://github.com/owenpkent/folio/discussions) before writing
+   Discussion before writing
    significant code. A short design note saves everyone time.
 4. Once there is rough agreement, open a draft PR and iterate.
 
@@ -416,8 +417,8 @@ data without explicit user action.
 ## Good first issues
 
 New to the project? Look for issues labeled
-[`good first issue`](https://github.com/owenpkent/folio/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
-and [`help wanted`](https://github.com/owenpkent/folio/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22).
+`good first issue`
+and `help wanted`.
 These are scoped to be approachable and usually include pointers to the
 relevant files.
 

@@ -1,0 +1,394 @@
+# Vnyl Accessibility Guide
+
+Accessibility is a first-class requirement in Vnyl, not a later pass. The target is **WCAG 2.2 Level AA**. This guide documents the concrete behaviors you can rely on and test against: the keyboard model, focus rules, ARIA structure, the text layer, live-region announcements, dark mode and dark schemes, reduced motion, zoom/reflow, and the automated plus manual testing approach.
+
+The accessibility utilities live in `src/a11y/` (announcer, focus trap, keyboard shortcut dispatch, and the skip link). Because every user action is a `Command` with an optional `keybinding` (see `docs/architecture.md`), keyboard access and menu access run the exact same code path.
+
+## Keyboard shortcuts
+
+All shortcuts dispatch through the command registry (`useKeyboardShortcuts` matches the pressed chord against each command's declared `keybinding`). Bindings use `Mod`, which resolves to `Cmd` on macOS and `Ctrl` elsewhere, so the two platform columns differ only in that modifier.
+
+Bindings are declared on the command, wherever that command lives, mostly `src/commands/defaultCommands.ts` and `src/features/annotations/commands.ts`, but `file.save` and `file.saveAs` are declared in `src/features/export/saveDocument.ts`, and `textedit.undo` in `src/features/textedit/commands.ts`. `grep -rn "keybinding:" src/` is the complete list.
+
+| Action | Command id | Windows/Linux | macOS |
+|---|---|---|---|
+| Open document | `file.open` | `Ctrl+O` | `Cmd+O` |
+| Save | `file.save` | `Ctrl+S` | `Cmd+S` |
+| Save a copy | `file.saveAs` | `Ctrl+Shift+S` | `Cmd+Shift+S` |
+| Print | `file.print` | `Ctrl+P` | `Cmd+P` |
+| Next page | `nav.nextPage` | `→` | `→` |
+| Previous page | `nav.prevPage` | `←` | `←` |
+| Scroll down one screen | `nav.scrollDown` | `Page Down` | `Page Down` |
+| Scroll up one screen | `nav.scrollUp` | `Page Up` | `Page Up` |
+| First page | `nav.firstPage` | `Ctrl+Home` | `Cmd+Home` |
+| Last page | `nav.lastPage` | `Ctrl+End` | `Cmd+End` |
+| Zoom in | `view.zoomIn` | `Ctrl+=` | `Cmd+=` |
+| Zoom out | `view.zoomOut` | `Ctrl+-` | `Cmd+-` |
+| Actual size (100%) | `view.zoomReset` | `Ctrl+0` | `Cmd+0` |
+| Toggle sidebar | `view.toggleSidebar` | `Ctrl+B` | `Cmd+B` |
+| Find in document | `search.toggle` | `Ctrl+F` | `Cmd+F` |
+| Close find | `search.close` | `Esc` | `Esc` |
+| Highlight selection | `annotate.highlight` | `Ctrl+Shift+H` | `Cmd+Shift+H` |
+| Add sticky note | `annotate.addNote` | `Ctrl+Shift+M` | `Cmd+Shift+M` |
+| Toggle UI theme (light/dark) | `theme.toggle` | `Ctrl+Shift+L` | `Cmd+Shift+L` |
+| Move selected pages up | `pageops.moveUp` | `Alt+↑` | `Option+↑` |
+| Move selected pages down | `pageops.moveDown` | `Alt+↓` | `Option+↓` |
+| Rotate selected pages left | `pageops.rotateLeft` | `Ctrl+[` | `Cmd+[` |
+| Rotate selected pages right | `pageops.rotateRight` | `Ctrl+]` | `Cmd+]` |
+| Select all pages (organizer only) | `pageops.selectAll` | `Ctrl+A` | `Cmd+A` |
+| Undo page change | `pageops.undo` | `Ctrl+Z` | `Cmd+Z` |
+
+The page rows above only fire once pages are selected, so the chords are free the rest of the time. `pageops.undo` shares `Ctrl/Cmd+Z` with `textedit.undo`, which claims it only while the Edit text tool is on; the dispatcher walks past a command whose `when` says no, so the two never contend. Deleting pages is deliberately *not* globally bound: `Delete` acts on whichever page list holds focus, so a global binding would fire while the caret sat in a form field. See [page-operations.md](page-operations.md).
+
+`Page Up`/`Page Down` are dispatched as commands rather than left to the browser. Native scrolling only acts on the focused element's nearest scrollable ancestor, so it stops working the moment focus moves to the toolbar or the find box; binding the keys keeps them working wherever focus happens to be.
+
+`↑`/`↓`, unmodified `Home`/`End` and `Space` are unbound and scroll natively, which works because the viewer takes focus when a document opens and gets it back when the find bar closes. `←`/`→` do **not** scroll: they are bound to page navigation and the dispatcher calls `preventDefault()`, so they never reach the browser's own scrolling. That is a deliberate trade (paging is the more useful binding) but it means horizontal scrolling at high zoom needs the scrollbar, the hand tool, or shift-scroll.
+
+> **Known issue (#89).** Every
+> unmodified single-key binding in the table above, `←`/`→` included, is
+> unreachable to a screen reader user in the default mode. NVDA owns the arrow
+> keys for its own virtual cursor in browse mode, so the keypress never reaches
+> the dispatcher; it only works after `NVDA+Space` switches to focus mode.
+> Measured on 2026-09-20: zero announcements in browse mode, `Page 2 of 2` in
+> focus mode, in four consecutive runs. The toolbar tooltips advertise the keys
+> regardless (`Previous page ( left arrow )`), so the interface currently
+> promises these users a shortcut they cannot use.
+
+Two rules qualify the "never hijack typing" default in `src/a11y/useKeyboardShortcuts.ts`. `Ctrl/Cmd+P` is the one chord besides `Escape` that still fires while the caret is in a text field: letting it fall through hands the browser's own print the app's chrome instead of the document, which is never what the shortcut means in a PDF viewer. And a held chord is swallowed rather than repeated, apart from the arrow, paging and `Home`/`End` keys that exist to be held: leaning on `Ctrl/Cmd+P` opens one dialog, not thirty.
+
+These commands exist but have **no keyboard binding**; they are reachable from the menu bar or the toolbar (and via the registry) only. The menu bar implements the full ARIA menubar keyboard pattern, so every menu item is operable with arrow keys, `Home`/`End`, `Enter`, and `Escape`:
+
+| Action | Command id | Trigger |
+|---|---|---|
+| Close document | `file.close` | Command / menu |
+| Set Vnyl as default PDF viewer | `file.setDefaultViewer` | Command (desktop only) |
+| Fit width | `view.fitWidth` | Toolbar button / View menu |
+| Fit page | `view.fitPage` | Toolbar button / View menu |
+| Hand tool (pan to scroll) | `view.toggleHandMode` | Toolbar button / View menu |
+| Auto-scroll (continuous, teleprompter-style) | `view.toggleAutoScroll` | Toolbar button / View menu |
+| Edit text | `textedit.toggle` | Edit menu |
+| Edit images | `imageedit.toggle` | Edit menu |
+| Add text box | `edit.addText` | Edit menu |
+| Add image | `edit.addImage` | Edit menu |
+| Add check mark | `edit.addCheckmark` | Edit menu |
+| Recognize text (OCR) | `ocr.recognizeDocument` | Edit menu |
+| Organize pages | `pageops.organize` | Pages menu |
+| Delete selected pages | `pageops.delete` | Pages menu / `Delete` on a focused page / selection bar |
+| Recognize text on this page | `ocr.recognizePage` | Command |
+| Add signature | `sign.addSignature` | Sign menu / Signatures panel |
+| Digitally sign | `sign.digitallySign` | Sign menu / Signatures panel |
+| Viewing mode (Light / Dark / Match system) | no command of its own; `theme.toggle` covers light and dark | Toolbar appearance menu / View menu ("Match system") |
+| Dark reading color (Night / Green / Amber) | no command | Toolbar appearance menu / View menu |
+| About Vnyl | `help.about` | Toolbar button / Help menu |
+| Check for updates (desktop only) | `help.checkForUpdates` | About dialog / Help menu |
+| Word Count (built-in plugin) | `plugin.wordCount.show` | Tools menu (plugin-contributed); the counts come back as a toast |
+
+Every one of these is reachable by keyboard through its menu item, toolbar button, or panel, so no functionality is keyboard-inaccessible (WCAG 2.1.1); they simply have no dedicated chord. The planned command palette is what makes them all directly reachable.
+
+Three of them — **Add text box**, **Add image**, and **Add signature** — do not act immediately: they arm [click-to-place](editing-and-ocr.md#editing-text-boxes-and-images), where the next click on a page decides where the item lands. Picking a spot that way is inherently a pointer affordance, so the mode's banner carries the keyboard path: a focusable **Place in the middle** button that drops the item centered on the current page (what the tools did before click-to-place existed), plus **Cancel**. The banner takes focus when it opens, so the button is one key away rather than a full tab traversal, and `Escape` cancels from anywhere. Nothing is placed until one of those two is chosen.
+
+Once auto-scroll is running, it has its own keyboard controls rather than a fixed chord: `Esc` stops it, `ArrowUp`/`+` speeds it up, and `ArrowDown`/`-` slows it down. It also pauses automatically while hand-panning and stops on its own at the end of the document.
+
+The hand tool, middle-mouse-button page panning (available in any mode, not just with the hand tool on), and the right-click context menu are pointer-only affordances layered on top of the command system, not replacements for it. The context menu duplicates a subset of the command set (select/hand tool, copy, highlight, add comment/text box/image/check mark/signature, find, save, save a copy) for convenience; every one of those remains reachable from the menu bar, the toolbar, and the keyboard as usual, so nothing the context menu offers is keyboard-inaccessible.
+
+On the desktop build, right-clicking anywhere *outside* the document opens nothing at all: the webview's own browser menu (Back, Reload, Save as, Print, Inspect) is suppressed, because it belongs to the frame Vnyl runs inside rather than to the application. That takes nothing away from a keyboard user, since it was never reachable without a pointer, and nothing from a pointer user either, since every action it offered either does not apply to a document window or exists on the menu bar and toolbar. Text fields are the exception and keep their native menu, cut/copy/paste included; that covers the form-field widgets drawn over a page, where it is the only pointer route to paste. In the browser build the surrounding page really is a page in a tab, so its menu is left alone.
+
+One row is a partial exception worth stating plainly. Right-clicking an email or web address offers **Copy email address** / **Copy link address**, showing the target underneath the label. For an address *printed in the page text* this is only a convenience: the text is selectable, so selecting it and pressing `Ctrl/Cmd+C` has always worked and still does. For a `/Link` **annotation**, though, the target is the one the document declared, which may be nothing like the words printed over it, and there is currently no keyboard route to it at all: the annotation layer is not focusable and no command enumerates a page's links. That is a real gap, and the fix is a links panel listing every address in the document, which would be reachable like any other sidebar tab. Until then, a link's declared target is pointer-only. See [page text and link addresses](#page-text-and-link-addresses).
+
+Planned, **not yet implemented** (no command is registered for these today): a command palette (`Ctrl/Cmd+Shift+P`) and an in-app keyboard-shortcuts help overlay (`?`). Every toolbar button whose command has a binding names it in the button's label, which is both its `aria-label` and its tooltip (`IconButton` sets the two from one `label` prop), so bindings stay discoverable until the help overlay lands. If you give an existing command a binding, add it to that label too.
+
+Form fields and signatures: filled AcroForm fields are native HTML inputs, so they are keyboard-operable, and Vnyl names each one from the field's `/TU` (falling back to `/T`) — see [The text layer and screen readers](#the-text-layer-and-screen-readers) for why PDF.js does not do this on its own. A field with neither entry has no name to give, which is a defect in the source PDF rather than in the viewer. The signature dialog is a focus-trapped modal (dismiss with `Escape`); its Type tab prefills the name last signed with and offers the recent ones as buttons, so the common case is reachable without typing at all. Placing the created signature has a keyboard path (the placement banner's **Place in the middle**, see above), and a placed signature is itself focusable: `Tab` reaches it and the arrow keys move it, `+`/`-` resize it, and `Delete` removes it (see [Nudging a placed overlay](#nudging-a-placed-overlay)). A signature has no selected state of its own, unlike a text box, so focus *is* the selection. Signatures and placed images carry **no alternative text** in the exported file, and there is no UI to supply one — a known gap, tracked in [508-conformance.md](508-conformance.md). See [forms-and-signatures.md](forms-and-signatures.md).
+
+> **Known issues in what those names actually sound like.** Naming a field from
+> `/TU` is necessary but not sufficient, and two problems only surface by ear:
+> every widget is wrapped in a named landmark, so NVDA speaks each field's name
+> twice and contributes one region per field to the landmark list
+> (#91); and every option in a
+> radio group inherits the same `/TU`, so the options announce identically with
+> no export value and no `1 of 2` position, leaving them indistinguishable
+> (#90). Both pass axe and
+> `eslint-plugin-jsx-a11y`, because in both cases the markup is valid and every
+> control has a non-empty name.
+
+Editing text in place: the **Edit text** tool toggle (`textedit.toggle`) is a command reachable from its Edit-menu item, like the others above. Once it is on, clicking a run of text opens an inline editor: a focused `role="textbox"` with its own `aria-label`, committing on `Enter` and cancelling on `Escape` like a native control. Choosing *which* run to edit is pointer-only today: the hit target is sized to the page and keyed to click coordinates, with no keyboard-driven way to tab between editable runs. While the tool is on, **Ctrl/Cmd+Z** (`textedit.undo`) undoes the most recent commit, up to 10 edits back. See [editing-and-ocr.md](editing-and-ocr.md#editing-existing-text).
+
+Editing embedded images: the **Edit images** tool toggle (`imageedit.toggle`) is a command reachable from its Edit-menu item, like the others above. The click-catcher is a real button: a pointer click selects whichever image is under it, and activating the same button from the keyboard (Enter/Space) selects the first editable image on the page instead, or announces that there is none. That keyboard path only ever reaches the first editable image, though; choosing a particular one on a page with more than one still needs a pointer. Once an image is selected the selection chrome takes focus, so the nudge keys apply immediately with no second `Tab` to find it; **Replace image…** and delete are ordinary buttons. Moving and resizing from the keyboard commit on a short delay rather than per keystroke, because unlike every other overlay an embedded image lives in the page's content stream and each change means a serialize, mutate, and reload round trip. See [editing-and-ocr.md](editing-and-ocr.md#editing-embedded-images).
+
+Check marks: **Add check mark** (`edit.addCheckmark`) is reachable from its Edit-menu item or the context menu, and goes through the shared click-to-place mode described above, so its keyboard path is the placement banner's **Place in the middle** button rather than anything of its own. It differs from the other placing tools in one respect that matters here: a click landing on a real AcroForm widget reaches the widget instead of stamping a mark, so a keyboard or pointer user filling in actual form fields is never blocked by an armed mark tool. Once placed, deleting a mark is an ordinary button; moving or resizing it needs a pointer, the same as text boxes and placed images. See [editing-and-ocr.md](editing-and-ocr.md#editing-text-boxes-images-and-check-marks).
+
+Every *command* is reachable by keyboard, and so is moving, resizing, and deleting anything Vnyl places on a page.
+
+### Nudging a placed overlay
+
+Every overlay Vnyl lets you drag can be positioned without a pointer. Focus one (`Tab` reaches placed text boxes, images, check marks, and signatures; the Edit images tool focuses its selection for you) and:
+
+| Key | Effect |
+| --- | --- |
+| Arrow | move one screen pixel |
+| Shift + Arrow | move ten |
+| `+` / `-` | grow / shrink by one screen pixel |
+| Shift + `+` / `-` | grow / shrink by ten |
+| Delete / Backspace | remove the item |
+
+> **Known issue (#88).** None of
+> the above works after placing a text box *from the keyboard*. The placement
+> banner's **Place in the middle** button leaves focus inside the editable, where
+> the arrow keys move the text caret instead, and `Delete` does not remove the
+> item. Verified under NVDA on 2026-09-20 and reproduced in four consecutive
+> runs. The table describes the hook's behavior when the wrapper has focus,
+> which is the state the keyboard route does not produce.
+
+One implementation, `src/a11y/useNudgeKeys.ts`, serves all five features, so the bindings cannot drift apart between them. Notes on the design:
+
+- **Steps are screen pixels of the rendered page**, not PDF points, for the same reason the drag handlers work that way: it is the space the user is looking at, it behaves predictably at any zoom, and zooming in is then how you get finer control.
+- **The modifiers avoid everything already claimed.** Alt+Arrow is back/forward in a browser build, so it is not used. Shift is the coarse-step modifier throughout.
+- **A handled key is claimed.** Arrows scroll the document, so a nudge calls `preventDefault` and `stopPropagation`; otherwise moving an item would sail the page out from under it.
+- **Keys from descendants are ignored.** A text box holds a `contentEditable`, and arrows there move the caret, not the box. The handler only acts when the overlay wrapper itself holds focus.
+- **Announcements are debounced.** A live region firing per keystroke would flood a screen reader during a run of presses, so the result is announced once the user pauses, including when the item is already flush against a page edge or at its smallest.
+- **A refused change is never announced as having happened.** `onChange` and `onDelete` return `false` when the layer declined the keystroke, and the hook then says `Image cannot be moved right now` rather than reading out a new position. This matters for the Edit images tool, whose commit path waits on the [document mutation lock](architecture.md#the-document-mutation-lock): the hook used to announce `Image moved to 40% across` and `Image deleted` unconditionally, while the layer had quietly refused both, so the announcement was the only feedback and it was wrong.
+- **Resize is all-or-nothing.** When one axis hits its floor the whole resize stops, rather than letting the other axis carry on and silently reshape the item.
+- **Aspect ratio is locked where the pointer locks it**: images, check marks, and signatures keep their displayed proportions; a text box's width and height move independently.
+
+### What still wants a pointer
+
+Two narrower gaps remain, both about *selection* rather than manipulation: picking which text run to edit (the hit target is sized to the page and keyed to click coordinates), and picking a particular embedded image beyond the first editable one on a page. Treat those as known gaps rather than per-feature oversights.
+
+If you add a feature, add its command with a `keybinding` rather than wiring a bespoke key handler.
+
+## Focus management rules
+
+Focus is deliberate, visible, and never lost. Rules enforced by `src/a11y` focus management:
+
+- **Visible focus rings, always.** Focus is styled with the `--vnyl-focus` token and is never removed (no `outline: none` without a replacement). Rings meet the 3:1 non-text contrast requirement in every theme and dark scheme.
+- **Logical tab order.** DOM order matches visual order: skip link → Toolbar → Sidebar (when open) → page viewport. Tabbing never jumps unpredictably.
+- **Focus trapping in overlays.** Transient surfaces use the `useFocusTrap` helper in `src/a11y/focus.ts`, which cycles `Tab`/`Shift+Tab` within the container and restores focus to the opener on close. The search bar focuses its input when it opens and closes on `Escape`; the planned command palette will use the same helper.
+- **One modal primitive, so the dialogs cannot drift apart.** `Modal` (`src/components/common/Modal.tsx`) owns the backdrop, the focus trap, `Escape`, and the header; a feature supplies only its own body and footer. Every dialog was a hand-rolled copy of those twenty lines, and copies drift: the OCR progress dialog was the one that never grew an `Escape` handler, so the modal a user can be stuck in front of for minutes was the single place the app's own "Escape is the way out of any modal" rule did not hold. A dialog whose footer already carries the exit (the two progress dialogs, a confirmation) passes `showClose={false}` and keeps `Escape`; one that is winding down passes `dismissDisabled` so the control stays put rather than shifting its neighbours as it disappears.
+- **Confirmations are real dialogs, never `window.confirm`.** When Vnyl has to put a yes/no question to the user (today: saving, printing, or signing while an OCR run is still filling in the text layer), it renders `ConfirmHost` — the same `Modal` primitive as every other dialog, with `role="alertdialog"`, described by its message, and `Escape` to decline. The native `confirm()` would block the whole renderer behind it, cannot be themed or contrast-checked, and is unreachable in the VS Code webview. The buttons name their actions (**Save anyway** / **Wait for recognition**), never "OK" and "Cancel", and the **cautious** one comes first in DOM order, so the trap's initial focus and an unread `Enter` both land on the reversible choice.
+- **Focus restoration.** When an overlay closes, focus returns to the element that opened it. Closing the find bar and committing the page box both return focus to the page viewport (`focusViewer` in `src/state/viewerElement.ts`) rather than dropping it on `<body>`, which would leave the scroll keys with no scrollable element to act on.
+- **The viewport takes focus when a document opens**, for the same reason: the app shell is `overflow: hidden`, so a scroll key that reaches `<body>` does nothing at all.
+- **The skip link targets the scroller itself**, not its `<main>` wrapper. The browser scrolls the focused element's nearest scrollable *ancestor*, and `<main>` is a non-scrolling parent of the viewer, so skipping to it would land focus somewhere the scroll keys are dead.
+- **No keyboard traps in content.** The page viewport is a single focus stop; you can always `Tab` past it. Within a page you navigate text with normal caret/selection keys, not by tabbing through every word.
+- **Skip to content.** A visually-hidden "Skip to document" link is the first focus stop, letting keyboard and screen-reader users bypass the toolbar.
+- **The crash screen takes focus.** When the root `ErrorBoundary` replaces the app, focus is on an element React has just unmounted, so the next `Tab` starts from nowhere and a screen-reader user is free to keep navigating a tree that is gone. `role="alert"` announces the text but does not move anyone. The fallback's heading takes focus instead (`tabIndex={-1}`), so reading starts at the top of the message and reaches the **Reload Vnyl** button in order.
+
+## ARIA landmarks and roles
+
+Vnyl exposes a stable landmark structure so screen-reader users can navigate by region.
+
+| Region | Element/role | ARIA |
+|---|---|---|
+| Application menu bar | `role="menubar"` | `aria-label="Application menu"`; each trigger is `role="menuitem"` with `aria-haspopup` and `aria-expanded`, dropdowns are `role="menu"`, checkable rows are `menuitemcheckbox`/`menuitemradio` with `aria-checked`, and shortcut hints are `aria-hidden` so they stay out of accessible names. On narrow viewports the row is replaced by one "Menu" button opening a grouped dropdown |
+| Top toolbar | `<header role="banner">` | icon buttons carry `aria-label` (for example "Toggle sidebar (Ctrl/Cmd + B)", "Zoom in (Ctrl/Cmd + =)"); the live zoom readout uses `aria-live="polite"`. The appearance trigger is a menu button, not a toggle: it carries `aria-haspopup="menu"` and `aria-expanded`, and deliberately suppresses the `aria-pressed` that `IconButton` emits for a pressed-looking control, which would otherwise announce a pressed state that only tracks whether the popup is showing |
+| Sidebar (outline, thumbnails, annotations) | `<aside>` (complementary) | `aria-label="Document tools"`; the rail is `role="tablist"` with `aria-orientation="vertical"`, each tab is `role="tab"` with `aria-selected` and a roving tabindex, and the body is `role="tabpanel"` |
+| Page viewport | `<main>` | `aria-label="Document"` |
+| Search bar | `role="search"` | labeled input, `aria-live` result count |
+| Announcer (polite) | visually hidden `role="status"` | `aria-live="polite"`, `aria-atomic="true"` |
+| Announcer (assertive, errors) | visually hidden `role="alert"` | `aria-live="assertive"`, `aria-atomic="true"` |
+
+There is no separate status-bar landmark today: the current page (an editable page box) and the current zoom percentage live in the toolbar, with the zoom readout in an `aria-live="polite"` region. A dedicated status bar is planned.
+
+Additional roles in the sidebar panels: thumbnails present a selectable list, each with `aria-current="page"` for the page in view; toolbar toggles expose their state via `aria-pressed`; the appearance menu names the mode in effect at the start of its own label ("Appearance: Match system", followed by the `Ctrl/Cmd + Shift + L` hint), and its rows are `menuitemradio`s carrying `aria-checked`.
+
+The appearance menu holds **two** independent radio sets, viewing mode and dark reading color, so each triple sits in its own `role="group"` named by its visible caption through `aria-labelledby`. Without the groups a screen reader reads one six-item radio group with two rows checked at once, and the captions (being `role="presentation"`) name neither set.
+
+**Known gap: the toolbar dropdowns are not arrow-key menus.** The appearance and More tools dropdowns use `role="menu"`, but their rows are reached with `Tab` rather than the arrow keys, and `Escape` closes them without returning focus to the trigger. Everything in them is operable, and the same settings are reachable from the menu bar (which does implement the full pattern), but the two dropdowns owe the roving tabindex the role promises.
+
+The sidebar rail is a real tablist: it uses a roving tabindex, so `Tab` steps over the rail as one stop and `↑`/`↓` (and `←`/`→`, and `Home`/`End`) move between tabs, with selection following focus. That handler is load-bearing rather than a nicety: a roving tabindex without it leaves every unselected panel unreachable by keyboard.
+
+The menu bar is a real APG menubar on the same principle: the whole row is one `Tab` stop (roving tabindex), `←`/`→` move across the menus (wrapping, and sliding an open menu along with focus), `↓`/`Enter`/`Space` open a menu at its first enabled row and `↑` at its last, `↑`/`↓` move within a menu skipping separators and disabled rows, `Home`/`End` jump to either end, and `Esc` closes the open menu and returns focus to its trigger. Activating an item also returns focus to the trigger. Opening a menu never disturbs the page text selection (mousedown is suppressed the same way the toolbar's Comment/Highlight buttons do it), so selection-driven commands work from the Annotate menu.
+
+**Known gap — the outline is not a tree.** `Outline.tsx` renders nested `<ul>`/`<li>` with a button per entry and `aria-expanded` on the expand/collapse toggle, not `role="tree"` / `role="treeitem"`. It is fully keyboard navigable and every control is named, but a screen reader announces it as a list rather than a tree, so it carries no level or set-position information. Making it a real tree means the ARIA roles plus arrow-key navigation over the same roving-tabindex pattern the rail now uses. Measured on 2026-09-21: NVDA says `outline, property page, list, with 3 items` and `list, with 2 items` where a tree would give level and position.
+
+> **Known issue (#93).** "Every
+> control is named" is true and still not enough. The expand/collapse toggle is
+> named only `Collapse` or `Expand`, with no reference to the heading it folds,
+> so an outline with three expandable chapters gives three announcements of
+> `Collapse, button, expanded` that cannot be told apart. Verified under NVDA on
+> 2026-09-21 in two consecutive runs. axe's `button-name` passes: the rule asks
+> whether a name exists, not whether it is unique or meaningful in context.
+
+## Names and tooltips
+
+Vnyl has no tooltip component: tooltips are native `title` attributes. `IconButton` (`src/components/common/IconButton.tsx`) takes one required `label` and sets **both** `aria-label` and `title` from it, so anything rendered through it is named for screen readers and hoverable for everyone else. Prefer it over a raw `<button>` for icon-only controls; a raw button with only `aria-label` is named but silent on hover, which is the gap sighted mouse users feel.
+
+Nothing enforces the pairing, so two rules are worth keeping in mind:
+
+- **Icon-only or single-glyph controls need both.** A "B" for bold or an "×" for close does not explain itself.
+- **Text that can be clipped needs a `title` carrying the full string.** Search snippets, outline entries and annotation rows are all truncated by CSS, so hovering is the only way to read the rest. The same applies wherever a label is *replaced* by user content: the signature font picker renders your typed name in each font, which hides the font's own name, so it carries an explicit `title` and `aria-label`.
+
+## Page text and link addresses
+
+Right-clicking an email or web address offers to copy it. The address is found three ways, in priority order: a `/Link` annotation the author declared, then an address printed in the page's own text, then one in text Vnyl recognised itself on a scan. The declared link wins because that is the target a click would actually follow. The OCR source matters more than it sounds: recognised text lives in a sidecar until it is baked into a saved copy, so without it a freshly recognised scan would offer nothing at all, which is the case a reader most wants this in.
+
+Hovering an address marks it, so you can see it is copyable without right-clicking to find out, and shows the target underneath. There is deliberately **no cursor change**: in Acrobat a link is left-clickable, so its hand cursor is honest, but Vnyl only ever offers to copy, from the context menu, so a pointer cursor would promise a click that does nothing. The hint is anchored under the address rather than following the pointer, so it can be moved onto without vanishing, and `Escape` dismisses it without moving the pointer at all (WCAG 2.2 SC 1.4.13). It is `aria-hidden`: a hover cannot be triggered without a pointer, so no assistive technology can reach it, and everything it says is repeated in the context menu row.
+
+The menu shows the target on a second line under the label rather than only naming the action. That is deliberate: a document is free to print "Click here for details" over a link pointing anywhere at all, and the moment before copying is the one moment the reader can see the difference. Nothing is opened, only copied, so a hostile document cannot turn a right-click into outbound navigation; Vnyl has no shell or opener capability at all (see `src-tauri/capabilities/`).
+
+Detection of addresses in the text is deliberately conservative. An address needs a scheme, a `www.`, or a well-known suffix, so "Fig.2", "version 1.2.3" and "report.pdf" are left alone: a menu row offering to copy something that is not an address reads as broken, which is worse than missing an unusual one. A suffix that is also an ordinary English word or abbreviation (`co`, `de`, `it`, `in`, `at`, `us`, `no`, `me`, `be`, `ie`) is accepted **only when the token carries a path, query, or fragment**, because prose never continues past the word: "the annual report.co branding" ends at the suffix, while a real short link is `t.co/aB3xY9` or `youtu.be/dQw4w9WgXcQ`. That keeps the shorteners a document is most likely to print without letting a sentence that lost the space after its full stop ("File the report.No changes are needed" — which OCR produces routinely) turn into an offer to copy a link that was never there. A bare domain under one of those suffixes with no path at all is still missed, which is the accepted trade. Hit-testing runs against PDF user-space geometry rather than the DOM. One mechanism then covers all three sources, it does not depend on PDF.js having rendered an anchor for a link (clicking a link annotation navigates nowhere in Vnyl, by design), and the whole thing is testable with no layout at all, which is where most of its tests live.
+
+## The text layer and screen readers
+
+Each rendered page is a `<canvas>` (the visual raster) with a **positioned text layer** overlaid on top, built by `PdfEngine.renderTextLayer(pageNumber, container, { scale })` from PDF.js text content (the same text is available to search and the AI layer via `getPageText`). This is the core of Vnyl's accessibility.
+
+- **Real text, not an image.** The text layer contains the document's actual glyphs positioned over the canvas. Screen readers read this text; users select and copy it; find-in-page highlights it.
+- **It exists only for the pages near the viewport, but well ahead of the reader.** The text layer is built for every page within 2400px of the viewport and emptied when a page moves further away than that, so on a very long document the text is never all present at once. The raster is on a much tighter 600px ring (a page outside it gives its canvas back, which is what keeps memory flat on a long scroll), and the two are deliberately separate: a text layer is DOM nodes, not a backing store, so keeping it on the wide ring costs little. The text layer used to share the raster ring, which ran barely a page ahead of an NVDA browse cursor, and the first page below the initial window was read as `blank` (#95). A linear read always has the wide ring's lead; a browse-mode jump further than 2400px (such as `Ctrl+End` on a long document) does not, and has not been measured with NVDA since the change.
+- **Selection matches the visual page.** Because text spans are positioned to align with the raster, a selection drag looks correct and yields the correct copied text.
+- **Reading order is content-stream order, not logical order.** Vnyl does not currently read the PDF's structure tree: `renderAnnotationLayer` passes `structTreeLayer: null`, `page.getStructTree()` is never called, and the text layer is positioned spans with no structure attached. So the order comes from `getTextContent()`, which follows the content stream, **even for a tagged PDF whose tags describe a different logical order**. For most documents the two coincide; for multi-column layouts, sidebars and floated figures they do not. Closing this means wiring PDF.js's `StructTreeLayerBuilder` and accessibility manager, and is the largest open item in this guide. See [508-conformance.md](508-conformance.md).
+- **The canvas is decorative to assistive tech.** The raster carries `aria-hidden="true"` (`src/components/Viewer/Page.tsx`) so screen readers do not announce it as an image; the text layer is the accessible representation.
+- **Form fields are named from the PDF.** PDF.js renders AcroForm widgets as native inputs but leaves them unnamed; it only applies ARIA from a structure tree, and the field's `/TU` goes on the wrapping `<section>` as a `title`, which does not name the input inside it. `nameFormWidgets` (`src/core/pdf/PdfJsEngine.ts`) sets `aria-label` on each control from the field's `/TU`, falling back to `/T`. An end-to-end test asserts this through the accessible-name computation rather than the attribute.
+
+## Live-region announcements
+
+State changes that are obvious visually but silent to a screen reader are announced through the live regions in `src/a11y/announcer.ts`. Each call clears the region first and writes the new text on the next animation frame, so an identical consecutive message is still re-announced and a burst of rapid updates coalesces to the latest value.
+
+There are around four dozen announcements; `grep -rn "announce(" src/` is the authoritative list, since any table here would drift. Representative examples, with their exact wording:
+
+| Event | Announcement |
+|---|---|
+| Page change | `Page 5 of 24` |
+| Zoom change | `Zoom 150 percent` |
+| Theme toggled with `Ctrl/Cmd + Shift + L` | `dark theme` / `light theme` (intended: the resolved theme — but see #94, it currently names the theme you just left) |
+| Viewing mode picked from a menu | `Viewing mode Light` / `Viewing mode Dark` / `Viewing mode Match system` (the mode chosen, since `system` resolves asynchronously) |
+| Dark reading color picked | `Dark reading color Night` / `Dark reading color Green` / `Dark reading color Amber` |
+| Document opened via the picker | `Opened report.pdf, 24 pages` |
+| Document closed | `Closed document` |
+| Highlight added | `Highlight added` |
+| Hand tool toggled | `Hand tool on` / `Hand tool off` |
+| Note placed | `Note added on page 3` |
+| Signature placed | `Signature placed. Drag it to reposition…` |
+| Check mark placed | `Check mark placed. Drag it to reposition, or drag the corner to resize.` |
+| No editable image to select | `No editable image on this page.` |
+| Saved in place | `Saved report.pdf` (no suffix; the original name) |
+| Saved a copy | `Saved report (filled).pdf` / `Downloaded report (filled).pdf` |
+| OCR finished | `Text recognition complete` |
+| An action refused while another document change is in flight | `Another document change is in progress.` (assertive) |
+
+One inconsistency worth knowing: a document opened from a **deep link or an OS file association** announces `Opened report.pdf` without the page count (`openFromDeepLink.ts`, `openFromLaunch.ts`), where the picker path includes it.
+
+> **Known issue (#94).** The
+> theme row above describes the intent, not the behavior. `theme.toggle` calls
+> `toggleTheme()` and then reads `resolvedTheme` synchronously, but
+> `resolvedTheme` is written by `ThemeProvider`'s effect, which has not run
+> yet — so the announcement is always one toggle behind. Measured under NVDA on
+> 2026-09-21 in two consecutive runs: the document went light to dark and NVDA
+> said `light theme`, then dark to light and NVDA said `dark theme`. The live
+> region itself is working correctly; it is being handed the wrong string.
+
+The polite region (`role="status"`, `aria-live="polite"`) never interrupts the user mid-sentence. Messages that need attention go to a separate assertive region (`role="alert"`, `aria-live="assertive"`) instead: that is what the `true` second argument to `announce()` selects. Assertive today: failures (`Could not open document: …`, `Could not save the document: …`, `Could not create the certificate`), instructions the user must act on before anything happens (`Select some text first, then add a highlight`, `Create a signature first`, `Enter a name and a passphrase`), and an action refused because another document change is still in flight (`Another document change is in progress.`) — the user has just asked for something that did not happen, so waiting for a polite gap would leave them thinking the command was ignored.
+
+The find-in-page result count is a separate `aria-live="polite"` region inside the search bar (not routed through the announcer); it reads `3 of 17`, `Searching…`, or `No results`. The print progress modal has one too, reading `Preparing to print, 40% done` in ten-percent steps rather than once per page: a region that updated per page would queue hundreds of announcements on a long document and still be reading page 40 after the print dialog had opened. The exact page stays on screen and on the progressbar for anyone who wants it, and `Escape` cancels the run like any other modal in the app. Fit-mode changes, sidebar toggles, and pointer-driven image-edit actions (select, drag, resize handle, replace) are not currently announced. Two exceptions: activating image selection from the keyboard on a page with no editable image announces `No editable image on this page.`, and the keyboard nudge keys announce every move, resize, and delete they make (or refuse) through the shared hook — see [Nudging a placed overlay](#nudging-a-placed-overlay).
+
+## Dark mode and dark schemes
+
+Vnyl's dark mode is unified: switching between **light / dark / system** darkens the chrome and inverts the rendered page together, rather than treating the page as a separately-controlled reading mode. Full detail, including how the inversion is rendered, is in `docs/theming.md`; the accessibility-relevant summary is a choice of color for the inverted page, made in the toolbar's single appearance menu under its "Dark reading color" group:
+
+| Dark scheme | Effect on page | Use case |
+|---|---|---|
+| Night (default) | Inverted, white-on-black | Low-light reading without a blinding white page |
+| Green | Inverted, green-on-black | Reduced-glare reading, classic terminal-style contrast |
+| Amber | Inverted, amber-on-black | Reduced-glare reading, warmer alternative to Night |
+
+The mode itself lives in the same menu, above the schemes. `Ctrl/Cmd + Shift + L` alternates light and dark only, so **Match system** is reachable from the appearance menu and from the View menu's "Match system" row (switching it off pins whichever theme is resolved at that moment). The View menu is the surface that implements the full APG menu keyboard pattern, so that row is the keyboard route to the third mode.
+
+UI text and controls meet the WCAG 2.2 AA contrast minimums (4.5:1 for normal text, 3:1 for large text and non-text UI components) in both light and dark themes. Focus indicators meet 3:1 against adjacent colors.
+
+## Reduced motion
+
+Vnyl honors `prefers-reduced-motion`. When the user requests reduced motion:
+
+- Page transitions, sidebar slide, and zoom animations are replaced with instant state changes.
+- Smooth-scroll to a search match becomes an instant jump.
+- No animation is essential to understanding state; the live-region announcement carries the meaning instead.
+
+This is implemented at the token/CSS level so it applies uniformly, including to plugin UI that uses the standard transition tokens.
+
+## Zoom and reflow
+
+- **Zoom** from a small fit-page view up to high magnification, via `view.zoomIn`/`view.zoomOut`, `view.zoomReset` (100%), and fit modes. `view.zoomIn`/`view.zoomOut` snap to a fixed set of preset levels (25/50/75/100/125/150/200/300/400/600/800%) rather than an arbitrary step, so the readout always lands on a predictable, announced value; fit-width and fit-page still compute an exact scale for the viewport.
+- **Fit width** keeps the page column at the viewport width so horizontal scrolling is not required at typical reading zoom, which supports the WCAG reflow expectation for content.
+- **OS/browser text scaling** and **application zoom** stack: the surrounding UI uses relative units so it remains usable when the platform text size is increased.
+- Zoom level is announced (`Zoom 150 percent`) and shown as a live `150%` readout in the toolbar so it is perceivable without relying on the visual size change alone.
+
+## Testing approach
+
+Accessibility is verified continuously, not audited once.
+
+**Automated (in CI):**
+
+- **eslint-plugin-jsx-a11y** flags missing labels, unsupported ARIA, and other markup issues on every push and pull request (see the `quality` CI job).
+- **Vitest** unit tests cover keyboard-shortcut dispatch (chords, the typing-in-input guard, and `when()` gating) and the stores behind accessible state.
+- **Playwright** end-to-end tests drive real keyboard and pointer flows in a browser (open, render, fill a form, sign), including `Page Up`/`Page Down` scrolling both with focus in the document and after it has moved to the toolbar. See [testing.md](testing.md).
+
+Planned: **axe-core** violation scanning wired into the end-to-end suite across views (viewer, sidebar open, search open, each dark scheme, light and dark), plus unit tests for the announcer (polite vs assertive) and focus trap/restore. These are not yet implemented.
+
+**Manual.** The list below is the pass this project intends to run per release.
+It has not been running per release, and saying so plainly is more useful than
+implying a cadence that does not exist:
+
+- The first recorded NVDA session against Vnyl is **2026-09-20**. It covered
+  four flows: search, page navigation, the PDF's own form fields, and placing
+  and moving a text box from the keyboard. Five unattended runs, four clean,
+  with identical results in every clean run.
+- It found four defects that none of the automated checks above detect
+  (#88,
+  #89,
+  #90,
+  #91). Each is about what the
+  screen reader *says*, so valid markup and a passing axe run would not have
+  caught any of them.
+- A second session on **2026-09-21** covered three more of the flows listed
+  below: reading page text, using the outline tree, and switching themes. Two
+  clean runs of each, identical both times. It found three more defects
+  (#93,
+  #94,
+  #95), again all in what is
+  spoken rather than in the markup.
+- **Reading page text is only partly covered.** The linear browse-mode read was
+  measured, and is what found #95.
+  NVDA's **say-all** was not: its output is not captured by the automation's
+  speech relay — it comes back empty even on a plain HTML control page with
+  known-readable text — so nothing is claimed about say-all in either
+  direction. Whoever wires this into CI should treat say-all as unmeasured
+  rather than passing.
+- The `Opened X, N pages` announcement is still **unverified at the moment of
+  opening**. The automation cannot drive the `Ctrl+O` file dialog, so fixtures
+  are loaded another way and that announcement never fires under test. The
+  text is present and correct in the live region when read there directly.
+- **VoiceOver on macOS has never been run.**
+
+The intended pass:
+
+- **NVDA** on Windows and **VoiceOver** on macOS passes covering: opening a document, navigating pages, reading page text, using the outline tree, searching, and switching themes and dark schemes.
+- Keyboard-only pass with no mouse: confirm every action in the shortcuts table works, focus is always visible, and no overlay traps focus. Include the placing tools (add text box / image / signature), where the banner's **Place in the middle** is the only keyboard route in.
+- Reduced-motion and high-contrast passes with the OS setting enabled.
+
+## WCAG 2.2 AA mapping
+
+The table maps Vnyl features to the success criteria they satisfy. This is a working map for contributors, not a formal conformance claim.
+
+| Feature | WCAG 2.2 success criterion | Level |
+|---|---|---|
+| Text layer over each page (readable, selectable text) | 1.1.1 Non-text Content; 1.4.5 Images of Text | A / AA |
+| Reading order from document text content | 1.3.2 Meaningful Sequence | A |
+| Landmarks, roles, `aria-*` state | 1.3.1 Info and Relationships; 4.1.2 Name, Role, Value | A |
+| UI contrast in light and dark themes | 1.4.3 Contrast (Minimum) | AA |
+| Non-text/UI-component contrast, focus rings | 1.4.11 Non-text Contrast | AA |
+| Fit width and application zoom (no loss at magnification) | 1.4.4 Resize Text; 1.4.10 Reflow | AA |
+| Address hint on hover: dismissible with `Escape`, hoverable (reaching the label does not take it away), and persistent until the pointer leaves | 1.4.13 Content on Hover or Focus | AA |
+| Full keyboard operation, all actions as commands | 2.1.1 Keyboard | A |
+| No keyboard trap; overlays trap-and-release correctly | 2.1.2 No Keyboard Trap | A |
+| Shortcuts are suppressed while typing in text inputs, `textarea`, `select`, or contenteditable (except `Escape` and `Ctrl/Cmd+P`, neither of which is a printable character), avoiding printable-key conflicts | 2.1.4 Character Key Shortcuts | A |
+| Skip-to-document link | 2.4.1 Bypass Blocks | A |
+| Visible focus indicator (`--vnyl-focus`) | 2.4.7 Focus Visible | AA |
+| Focus not obscured by toolbar/overlays | 2.4.11 Focus Not Obscured (Minimum) | AA |
+| Logical, consistent focus order | 2.4.3 Focus Order | A |
+| Reduced-motion handling | 2.3.3 Animation from Interactions | AAA (honored) |
+| Consistent toolbar/menu placement and labels | 3.2.3 Consistent Navigation; 3.2.4 Consistent Identification | AA |
+| Live-region status announcements | 4.1.3 Status Messages | AA |
+| Accessible names on all controls | 2.5.3 Label in Name; 4.1.2 Name, Role, Value | A |
+
+## Related documents
+
+- `docs/508-conformance.md`: how Vnyl maps to the Revised 508 Standards, which incorporate WCAG 2.0 A/AA by reference, plus the provisions WCAG does not cover (platform settings, authoring tools, support documentation) and the open gaps.
+- `docs/architecture.md`: the command registry and a11y layer in context.
+- `docs/theming.md`: token values, contrast, dark mode, and dark schemes.

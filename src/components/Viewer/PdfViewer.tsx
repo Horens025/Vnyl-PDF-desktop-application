@@ -1,0 +1,526 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+import { announce } from '@/a11y/announcer';
+import { getEngine } from '@/core/pdf';
+import { primePageSizeEstimate, subscribePageSizes } from '@/core/pdf/pageSizes';
+import { NATIVE_CONTEXT_MENU_TARGETS, useContextMenu } from '@/features/contextmenu';
+import { AddressHint, copyTargetAt, useTrackAddressHover } from '@/features/links';
+import { watchDevicePixelRatio } from '@/hooks/watchDevicePixelRatio';
+import { focusViewer, setViewerElement } from '@/state/viewerElement';
+import { MAX_SCALE, MIN_SCALE, useViewerStore } from '@/state/viewerStore';
+import { useDocumentStore } from '@/state/documentStore';
+
+import { EmptyState } from './EmptyState';
+import { Page } from './Page';
+
+function announceSpeed(): void {
+  announce(`Auto-scroll speed ${useViewerStore.getState().autoScrollSpeed} pixels per second`);
+}
+
+// How long a scroll-to-page request keeps re-aiming at its target. Closed on a
+// timer rather than on a scroll-settled signal because `scrollend` is not in
+// every webview this ships in, and measurements for a deep jump keep landing
+// for a moment after the animation itself has stopped.
+const RE_AIM_WINDOW_MS = 4000;
+
+/** The scrollable document surface: fit/zoom, lazy pages, current-page tracking. */
+export function PdfViewer() {
+  const status = useDocumentStore((s) => s.status);
+  const error = useDocumentStore((s) => s.error);
+  const fingerprint = useDocumentStore((s) => s.info?.fingerprint);
+  // A page operation keeps the fingerprint (it is the same logical document)
+  // but can change what page 1 is, and page 1's size is the layout estimate for
+  // every page not yet measured.
+  const docVersion = useDocumentStore((s) => s.docVersion);
+  const [documentOpening, setDocumentOpening] = useState(false);
+
+  const numPages = useViewerStore((s) => s.numPages);
+  const scale = useViewerStore((s) => s.scale);
+  const fitMode = useViewerStore((s) => s.fitMode);
+  const pageLayout = useViewerStore((s) => s.pageLayout);
+  const verticalScrolling = useViewerStore((s) => s.verticalScrolling);
+  const handMode = useViewerStore((s) => s.handMode);
+  const autoScroll = useViewerStore((s) => s.autoScroll);
+  const openContextMenu = useContextMenu((s) => s.openMenu);
+  const setContextMenuTarget = useContextMenu((s) => s.setTarget);
+  // Hand mode turns every drag into a pan, so a hint chasing the pointer there
+  // is noise on top of a gesture that is not about the text.
+  const addressHover = useTrackAddressHover(scale, !handMode);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const naturalRef = useRef<{ width: number; height: number } | null>(null);
+  const panRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
+  // Bumped on every right-click so a slow address resolve landing after a
+  // second right-click has already opened the menu somewhere else cannot fill
+  // in a target that belongs to the older position.
+  const contextMenuGeneration = useRef(0);
+
+  // Run the entrance once the new document is ready. The fingerprint changes
+  // on tab/document switches; docVersion is intentionally excluded because it
+  // also changes after edits to the currently open PDF.
+  useEffect(() => {
+    if (status !== 'ready' || !fingerprint) {
+      setDocumentOpening(false);
+      return;
+    }
+    setDocumentOpening(true);
+    const timeout = window.setTimeout(() => setDocumentOpening(false), 700);
+    return () => window.clearTimeout(timeout);
+  }, [status, fingerprint]);
+
+  const recomputeFit = useCallback(() => {
+    const container = containerRef.current;
+    const natural = naturalRef.current;
+    if (!container || !natural) return;
+    if (useViewerStore.getState().fitMode === 'custom') return;
+
+    const style = getComputedStyle(container);
+    const padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+    const padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    const availWidth = container.clientWidth - padX;
+    const availHeight = container.clientHeight - padY;
+
+    const mode = useViewerStore.getState().fitMode;
+    let next = 1;
+    const pageWidth = pageLayout === 'double' ? natural.width * 2 : natural.width;
+    const pageHeight = pageLayout === 'double' ? natural.height : natural.height;
+    if (mode === 'width') next = availWidth / pageWidth;
+    else if (mode === 'page') next = Math.min(availWidth / pageWidth, availHeight / pageHeight);
+
+    next = Math.max(MIN_SCALE, Math.min(MAX_SCALE, next));
+    // Set scale directly so we don't flip fitMode back to "custom".
+    useViewerStore.setState({ scale: next });
+  }, [pageLayout]);
+
+  // Publish the scroller so commands can scroll and focus it. Runs on every
+  // status change because the element only exists outside the empty state.
+  useEffect(() => {
+    setViewerElement(containerRef.current);
+    return () => setViewerElement(null);
+  }, [status]);
+
+  // Focus the viewer once a document is up, so the browser's scroll keys have
+  // somewhere to act. Without this, focus stays on <body>, which cannot scroll
+  // (.vnyl-app is overflow:hidden) and every scroll key silently does nothing.
+  useEffect(() => {
+    if (status === 'ready') focusViewer();
+  }, [status, fingerprint]);
+
+  // Grab the natural (100%) size of page 1 when a document loads.
+  useEffect(() => {
+    naturalRef.current = null;
+    if (status !== 'ready') return;
+    let cancelled = false;
+    getEngine()
+      .getPageDimensions(1, 1)
+      .then((d) => {
+        if (cancelled) return;
+        naturalRef.current = d;
+        // Page 1's size doubles as the layout estimate for every page not yet
+        // measured, so the scrollbar is honest from the first frame without
+        // measuring the whole document.
+        primePageSizeEstimate(d);
+        recomputeFit();
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [status, fingerprint, docVersion, recomputeFit]);
+
+  // Recompute the fit scale when the fit mode changes or the container resizes.
+  useEffect(() => {
+    recomputeFit();
+  }, [fitMode, pageLayout, recomputeFit]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver(() => recomputeFit());
+    observer.observe(container);
+    return () => observer.disconnect();
+    // `status` re-runs this once the scroller exists: it is not rendered in the
+    // empty state, so an observer attached at mount would watch nothing and the
+    // page would never re-fit when the area around it resizes (split view).
+  }, [recomputeFit, status]);
+
+  // Track the current page from scroll position. Uses viewport-relative rects
+  // (so it does not depend on offsetParent) and a capture-phase scroll listener
+  // (so it fires whether the viewer element or an ancestor is the scroller, e.g.
+  // inside the VS Code webview).
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      const pages = container.querySelectorAll<HTMLElement>('.vnyl-page');
+      if (pages.length === 0) return;
+      const cr = container.getBoundingClientRect();
+      const vertical = useViewerStore.getState().verticalScrolling;
+      const mid = vertical ? cr.top + container.clientHeight / 2 : cr.left + container.clientWidth / 2;
+      let current = 0;
+      for (const el of pages) {
+        const r = el.getBoundingClientRect();
+        // Skip pages that have not measured yet (0 size), or the last such
+        // page would be picked before layout settles.
+        if (vertical) {
+          if (r.height < 1) continue;
+          if (r.top <= mid && r.bottom > mid) {
+            current = Number(el.dataset.pageNumber);
+            break;
+          }
+          if (r.bottom <= mid) current = Number(el.dataset.pageNumber);
+        } else {
+          if (r.width < 1) continue;
+          if (r.left <= mid) current = Number(el.dataset.pageNumber);
+          else break;
+        }
+      }
+      const viewer = useViewerStore.getState();
+      if (current && current !== viewer.currentPage) viewer.setCurrentPage(current);
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(update);
+    };
+    // Capture phase catches scroll from whichever element actually scrolls,
+    // since scroll events do not bubble.
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    // Recompute when page heights arrive (they are measured asynchronously), so
+    // the initial page is correct without waiting for a scroll.
+    const pagesEl = container.querySelector('.vnyl-pages');
+    const ro = pagesEl ? new ResizeObserver(onScroll) : null;
+    if (pagesEl && ro) ro.observe(pagesEl);
+    update();
+    return () => {
+      window.removeEventListener('scroll', onScroll, { capture: true });
+      ro?.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
+    // Depend on `status`: the container only exists once the document leaves the
+    // empty state, so the listener must (re)attach when that element appears.
+  }, [status]);
+
+  // Re-rasterise every page when devicePixelRatio changes — dragging the window
+  // to a monitor of a different scale leaves canvases baked at the old ratio,
+  // which the OS then stretches (blur). devicePixelRatio has no change event of
+  // its own, so the detection lives in watchDevicePixelRatio; see there for why
+  // it brackets the ratio with a range query rather than testing it for equality
+  // (an equality query built from a fractional ratio may never match, which is
+  // exactly the fractional-scaling case the feature exists for).
+  useEffect(() => watchDevicePixelRatio(() => useViewerStore.getState().bumpRenderNonce()), []);
+
+  // Honor scroll-to-page requests (outline clicks, page box, next/prev).
+  //
+  // Requests are taken off the store by hand rather than through a rendered
+  // selector: taking one clears pendingScrollPage, so an effect keyed on that
+  // value re-ran on its own clear and its cleanup tore the re-aim subscription
+  // below down before a single measurement could arrive, which left every jump
+  // sitting at the estimated offset. Keyed on `status` for the same reason as
+  // the effects above: the container exists only outside the empty state.
+  useEffect(() => {
+    // Teardown for the request still re-aiming, if there is one.
+    let endReAim: (() => void) | null = null;
+
+    const run = (page: number) => {
+      // A newer request supersedes whatever the last one was still chasing.
+      endReAim?.();
+      const container = containerRef.current;
+      const el = container?.querySelector<HTMLElement>(`.vnyl-page[data-page-number="${page}"]`);
+      // A request that cannot be served yet is left pending rather than
+      // consumed. Opening a document straight to a page issues one in the gap
+      // between the store being marked ready and React committing the pages
+      // for it, and the subscription that hears it there is the one attached
+      // before that commit -- with no container and no page element to scroll
+      // to. Clearing at that point threw the request away, and the effect that
+      // re-attached on the commit a moment later found nothing pending, so the
+      // jump was lost and the reader landed on page 1. Taking it only on the
+      // pass that actually scrolls leaves it there for that re-attach to find.
+      if (!container || !el) return;
+      useViewerStore.getState().clearPendingScroll();
+
+      const targetPosition = () => {
+        const spread = el.closest<HTMLElement>('.vnyl-page-spread') ?? el;
+        if (verticalScrolling) return Math.max(0, spread.offsetTop - 16);
+        const rect = spread.getBoundingClientRect();
+        return Math.max(0, rect.left - container.getBoundingClientRect().left + container.scrollLeft - 16);
+      };
+      let aimedAt = targetPosition();
+      container.scrollTo(verticalScrolling ? { top: aimedAt, behavior: 'smooth' } : { left: aimedAt, behavior: 'smooth' });
+
+      // Pages the user has never been near are laid out at an estimated height
+      // until they measure themselves, so a jump deep into a long document aims
+      // at where the target is currently believed to be. As those measurements
+      // land the pages above it resize and the target moves, so re-aim whenever
+      // it does. Reading offsetTop is deferred to the next frame because the
+      // notification fires before React has committed the new heights, and
+      // re-issuing a smooth scroll retargets the running animation rather than
+      // restarting it.
+      let raf = 0;
+      const stop = subscribePageSizes(() => {
+        if (raf) return;
+        raf = requestAnimationFrame(() => {
+          raf = 0;
+          const want = targetPosition();
+          if (want === aimedAt) return;
+          aimedAt = want;
+          container.scrollTo(verticalScrolling ? { top: want, behavior: 'smooth' } : { left: want, behavior: 'smooth' });
+        });
+      });
+      const timer = window.setTimeout(() => endReAim?.(), RE_AIM_WINDOW_MS);
+      endReAim = () => {
+        endReAim = null;
+        stop();
+        window.clearTimeout(timer);
+        if (raf) cancelAnimationFrame(raf);
+      };
+    };
+
+    // A request can be issued before this effect attaches (opening a document
+    // straight to a page), so take whatever is already pending.
+    const pending = useViewerStore.getState().pendingScrollPage;
+    if (pending != null) run(pending);
+
+    const unsubscribe = useViewerStore.subscribe((state, previous) => {
+      if (state.pendingScrollPage != null && state.pendingScrollPage !== previous.pendingScrollPage)
+        run(state.pendingScrollPage);
+    });
+
+    return () => {
+      unsubscribe();
+      endReAim?.();
+    };
+  }, [status, verticalScrolling]);
+
+  // Auto-scroll (teleprompter): glide the page down while active. A floating
+  // point position is advanced every frame and written straight to scrollTop —
+  // browsers keep sub-pixel scroll offsets on HiDPI, so even a slow crawl moves
+  // smoothly instead of stepping a whole pixel at a time. Speed is read live so
+  // slider/keyboard changes apply without restarting the loop. Panning pauses
+  // it, manual scrolling is adopted, and reaching the bottom switches it off.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!autoScroll || !container) return;
+
+    let raf = 0;
+    let last = 0;
+    let pos = container.scrollTop; // float scroll position we own between frames
+    const step = (ts: number) => {
+      if (last === 0) last = ts;
+      // Clamp dt so a dropped/backgrounded frame doesn't lurch the page.
+      const dt = Math.min((ts - last) / 1000, 0.05);
+      last = ts;
+      // Hold position while the user is actively panning the page by hand.
+      const maxTop = container.scrollHeight - container.clientHeight;
+      // Nothing to scroll (the document fits the viewport): idle without
+      // advancing or spuriously announcing the end. Stays armed, so it starts
+      // gliding if the content later overflows (e.g. the user zooms in).
+      if (!panRef.current && dt > 0 && maxTop > 0.5) {
+        // If the user scrolled by hand (wheel, keys), adopt that position.
+        if (Math.abs(container.scrollTop - pos) > 2) pos = container.scrollTop;
+        const speed = useViewerStore.getState().autoScrollSpeed;
+        pos += speed * dt;
+        container.scrollTop = pos;
+        if (pos >= maxTop - 0.5) {
+          useViewerStore.getState().setAutoScroll(false);
+          announce('Auto-scroll reached the end');
+          return;
+        }
+      }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+
+    // While auto-scrolling, keep speed control and stop on the keyboard.
+    const onKey = (e: KeyboardEvent) => {
+      // Don't steal keys the command dispatcher already handled (it runs first
+      // and preventDefaults its matches), and never fire on a modifier combo —
+      // otherwise Ctrl/Cmd+= and Ctrl/Cmd+- would zoom *and* change speed.
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+      // Don't steal keys while the user is typing in a field (find box, page box).
+      const el = e.target as Element | null;
+      if (el?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (e.key === 'Escape') {
+        useViewerStore.getState().setAutoScroll(false);
+        announce('Auto-scroll off');
+        e.preventDefault();
+      } else if (e.key === 'ArrowUp' || e.key === '+' || e.key === '=') {
+        useViewerStore.getState().adjustAutoScrollSpeed(1.3);
+        announceSpeed();
+        e.preventDefault();
+      } else if (e.key === 'ArrowDown' || e.key === '-' || e.key === '_') {
+        useViewerStore.getState().adjustAutoScrollSpeed(1 / 1.3);
+        announceSpeed();
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [autoScroll]);
+
+  // Pan the document by dragging: the hand tool with the left button, or the
+  // middle button in any mode (like Acrobat / browsers). Interactive overlays
+  // keep their own drag behavior; everything else pans.
+  const onPanStart = (e: React.PointerEvent<HTMLDivElement>) => {
+    const handLeft = handMode && e.button === 0;
+    const middle = e.button === 1;
+    if (!handLeft && !middle) return;
+    const target = e.target as Element;
+    if (target.closest('input, textarea, button, a, [data-pan-exclude]')) {
+      return;
+    }
+    const container = containerRef.current;
+    if (!container) return;
+    e.preventDefault();
+    // preventDefault suppresses the browser's focus-on-mousedown, which would
+    // otherwise leave the scroll keys dead after a pan.
+    container.focus({ preventScroll: true });
+    panRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      left: container.scrollLeft,
+      top: container.scrollTop,
+    };
+    container.classList.add('is-grabbing');
+    container.setPointerCapture(e.pointerId);
+  };
+  const onPanMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const pan = panRef.current;
+    const container = containerRef.current;
+    if (!pan || !container) return;
+    container.scrollLeft = pan.left - (e.clientX - pan.x);
+    container.scrollTop = pan.top - (e.clientY - pan.y);
+  };
+  const onPanEnd = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!panRef.current) return;
+    panRef.current = null;
+    const container = containerRef.current;
+    if (!container) return;
+    container.classList.remove('is-grabbing');
+    try {
+      container.releasePointerCapture(e.pointerId);
+    } catch {
+      /* capture may already be released */
+    }
+  };
+
+  // Suppress the browser's middle-click autoscroll widget so our middle-button
+  // pan (onPanStart) takes over instead. preventDefault must happen on mousedown
+  // for the pointer button; the pointerdown handler above starts the actual pan.
+  const onMouseDownCapture = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button === 1) e.preventDefault();
+  };
+
+  // Acrobat-style right-click menu. Leave editable targets (note editor, inputs)
+  // to the native menu so copy/paste there still works.
+  const onContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as Element;
+    if (target.closest(NATIVE_CONTEXT_MENU_TARGETS)) return;
+    e.preventDefault();
+    const selectionText = window.getSelection()?.toString() ?? '';
+
+    // Where the click landed on the page, in the page element's own CSS pixels,
+    // which is what the viewport converts into PDF user space.
+    const pageEl = target.closest<HTMLElement>('.vnyl-page');
+    const pageNumber = Number(pageEl?.dataset.pageNumber ?? 0);
+    // Opened immediately, with no target: preventDefault has already
+    // suppressed the native menu, so this cannot wait on a resolve (a page
+    // viewport plus link/text lookups, a worker round trip on a cold cache)
+    // without leaving the user with neither menu for that whole window. The
+    // address row, if there is one, is filled in once it lands.
+    openContextMenu(e.clientX, e.clientY, selectionText);
+    if (!pageEl || !pageNumber) return;
+
+    const box = pageEl.getBoundingClientRect();
+    const cssX = e.clientX - box.left;
+    const cssY = e.clientY - box.top;
+    const mine = (contextMenuGeneration.current += 1);
+    void copyTargetAt(pageNumber, cssX, cssY, scale).then(
+      (hit) => {
+        if (mine === contextMenuGeneration.current) setContextMenuTarget(hit?.target ?? null);
+      },
+      () => {
+        // copyTargetAt never throws; this only guards against an unhandled
+        // rejection if that contract is ever broken.
+      },
+    );
+  };
+
+  if (status === 'empty') return <EmptyState />;
+  if (status === 'error') {
+    return (
+      <div className="vnyl-viewer-message" role="alert">
+        Could not open document{error ? `: ${error}` : ''}.
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className={`vnyl-viewer vnyl-viewer--${pageLayout}${verticalScrolling ? '' : ' vnyl-viewer--horizontal'}${handMode ? ' is-hand' : ''}${autoScroll ? ' is-autoscroll' : ''}`}
+      role="region"
+      aria-label="Document pages"
+      aria-busy={status === 'loading'}
+      onMouseDownCapture={onMouseDownCapture}
+      onPointerDown={onPanStart}
+      onPointerMove={(e) => {
+        onPanMove(e);
+        addressHover.onPointerMove(e);
+      }}
+      onPointerLeave={addressHover.onPointerLeave}
+      onPointerUp={onPanEnd}
+      onLostPointerCapture={onPanEnd}
+      onWheel={(event) => {
+        if (verticalScrolling || event.ctrlKey) return;
+        const amount = Math.abs(event.deltaY) > Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+        if (amount !== 0) {
+          event.preventDefault();
+          containerRef.current?.scrollBy({ left: amount, behavior: 'instant' });
+        }
+      }}
+      onContextMenu={onContextMenu}
+      // A scrollable region must be keyboard focusable so it can be scrolled
+      // with the arrow keys (WCAG 2.1.1).
+      // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+      tabIndex={0}
+    >
+      {status === 'loading' && <div className="vnyl-viewer-message">Opening document…</div>}
+      <div className={`vnyl-pages${verticalScrolling ? '' : ' vnyl-pages--horizontal'}${documentOpening ? ' is-opening' : ''}`}>
+        {pageLayout === 'double' ? (
+          Array.from({ length: Math.ceil(numPages / 2) }, (_, spread) => (
+            <div className="vnyl-page-spread" key={`${fingerprint}-spread-${spread}`}>
+              {[spread * 2 + 1, spread * 2 + 2].filter((n) => n <= numPages).map((pageNumber) => (
+                <Page key={`${fingerprint}-${pageNumber}`} pageNumber={pageNumber} scale={scale / 2} />
+              ))}
+            </div>
+          ))
+        ) : pageLayout === 'cover' && numPages > 0 ? (
+          <>
+            <div className="vnyl-page-spread vnyl-page-spread--cover" key={`${fingerprint}-cover`}>
+              <Page pageNumber={1} scale={scale} />
+            </div>
+            {Array.from({ length: Math.ceil((numPages - 1) / 2) }, (_, spread) => (
+              <div className="vnyl-page-spread" key={`${fingerprint}-spread-${spread}`}>
+                {[spread * 2 + 2, spread * 2 + 3].filter((n) => n <= numPages).map((pageNumber) => (
+                  <Page key={`${fingerprint}-${pageNumber}`} pageNumber={pageNumber} scale={scale / 2} />
+                ))}
+              </div>
+            ))}
+          </>
+        ) : (
+          Array.from({ length: numPages }, (_, i) => i + 1).map((pageNumber) => (
+            <div className="vnyl-page-spread" key={`${fingerprint}-spread-${pageNumber}`}>
+              <Page pageNumber={pageNumber} scale={scale} />
+            </div>
+          ))
+        )}
+        <AddressHint />
+      </div>
+    </div>
+  );
+}

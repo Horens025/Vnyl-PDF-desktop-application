@@ -70,7 +70,7 @@ function pdfjsWasmAssets(): Plugin {
   );
 
   return {
-    name: 'folio-pdfjs-wasm',
+    name: 'vnyl-pdfjs-wasm',
 
     // Dev has no bundle to emit into, so serve them straight from the package.
     configureServer(server) {
@@ -121,7 +121,7 @@ export default defineConfig({
     // The Chrome extension package leaves the OCR runtime out (it was 77% of
     // the payload), so the feature has to be absent from the UI rather than
     // present and failing on a missing asset. Set by extensions/chrome/build.mjs.
-    __OCR_BUNDLED__: JSON.stringify(process.env.FOLIO_NO_OCR !== '1'),
+    __OCR_BUNDLED__: JSON.stringify(process.env.VNYL_NO_OCR !== '1'),
   },
 
   // Prevent Vite from obscuring Rust errors during `tauri dev`.

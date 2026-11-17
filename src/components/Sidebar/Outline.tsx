@@ -1,0 +1,81 @@
+import { useState } from 'react';
+
+import { Icon } from '@/components/common';
+import type { OutlineNode } from '@/core/pdf';
+import { useDocumentStore } from '@/state/documentStore';
+import { useViewerStore } from '@/state/viewerStore';
+import { isNarrowViewport } from '@/theme/breakpoints';
+
+export function Outline() {
+  const outline = useDocumentStore((s) => s.outline);
+  const goToPage = useViewerStore((s) => s.goToPage);
+  const setSidebarOpen = useViewerStore((s) => s.setSidebarOpen);
+
+  if (outline.length === 0) {
+    return <p className="vnyl-sidebar__empty">This document has no outline.</p>;
+  }
+
+  // On narrow viewports the sidebar is a drawer covering the page; navigating
+  // to a heading means "show it", so dismiss the drawer.
+  const navigate = (page: number) => {
+    goToPage(page);
+    if (isNarrowViewport()) setSidebarOpen(false);
+  };
+
+  return (
+    <ul className="vnyl-outline">
+      {outline.map((node, i) => (
+        <OutlineItem key={i} node={node} onNavigate={navigate} />
+      ))}
+    </ul>
+  );
+}
+
+interface OutlineItemProps {
+  node: OutlineNode;
+  onNavigate: (page: number) => void;
+}
+
+function OutlineItem({ node, onNavigate }: OutlineItemProps) {
+  const [open, setOpen] = useState(true);
+  const hasChildren = node.children.length > 0;
+
+  return (
+    <li className="vnyl-outline__item">
+      <div className="vnyl-outline__row">
+        {hasChildren ? (
+          <button
+            type="button"
+            className="vnyl-outline__toggle"
+            aria-label={open ? 'Collapse' : 'Expand'}
+            title={open ? 'Collapse' : 'Expand'}
+            aria-expanded={open}
+            onClick={() => setOpen((o) => !o)}
+          >
+            <Icon name={open ? 'chevron-down' : 'chevron-right'} size={16} />
+          </button>
+        ) : (
+          <span className="vnyl-outline__spacer" aria-hidden="true" />
+        )}
+        <button
+          type="button"
+          className="vnyl-outline__link"
+          // Bookmark titles are clipped at the sidebar's width, and nested ones
+          // lose more of it to indentation.
+          title={node.title}
+          disabled={node.pageNumber == null}
+          onClick={() => node.pageNumber != null && onNavigate(node.pageNumber)}
+        >
+          {node.title}
+        </button>
+      </div>
+      {hasChildren && open && (
+        <ul className="vnyl-outline__children">
+          {node.children.map((child, i) => (
+            <OutlineItem key={i} node={child} onNavigate={onNavigate} />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}

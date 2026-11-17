@@ -1,0 +1,67 @@
+{
+  "name": "vnyl-vscode",
+  "displayName": "Vnyl PDF Viewer",
+  "description": "A fast, accessible, dark-mode-native PDF viewer inside VS Code. Powered by Vnyl and PDF.js.",
+  "version": "0.0.1",
+  "publisher": "vnyl",
+  "private": true,
+  "license": "MIT",
+  "homepage": "https://github.com/Horens025/Vnyl-PDF-desktop-application/tree/main/extensions/vscode",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Horens025/Vnyl-PDF-desktop-application.git",
+    "directory": "extensions/vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/Horens025/Vnyl-PDF-desktop-application/issues"
+  },
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#1f57e6",
+    "theme": "dark"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "pdf",
+    "pdf viewer",
+    "pdf.js",
+    "viewer",
+    "dark mode",
+    "annotations",
+    "accessibility"
+  ],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "main": "./out/extension.js",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "vnyl.pdfViewer",
+        "displayName": "Vnyl PDF Viewer",
+        "selector": [
+          {
+            "filenamePattern": "*.pdf"
+          }
+        ],
+        "priority": "default"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^6.2.108"
+  }
+}

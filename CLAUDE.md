@@ -1,6 +1,6 @@
 # CLAUDE.md - AI assistant rules for this project
 
-> This file was installed by [`scripts/install-in-repo.ps1`](https://github.com/owenpkent/security-tooling) from `templates/repo-bootstrap/CLAUDE.md.template`. It encodes baseline security rules for any AI assistant (Claude Code, Cursor, Windsurf, Copilot, etc.) working in this repository. Edit freely; delete the sections that don't apply to this project. The HTML-comment markers (`<!-- STACK:... -->`, `<!-- LLM:... -->`) are anchors for future automated section-pruning by the installer.
+> This file documents baseline security rules for AI coding assistants (Claude Code, Cursor, Windsurf, Copilot, etc.) working in this repository. Edit freely; delete the sections that don't apply to this project. The HTML-comment markers (`<!-- STACK:... -->`, `<!-- LLM:... -->`) are anchors for future section-pruning.
 
 ## What this file is
 

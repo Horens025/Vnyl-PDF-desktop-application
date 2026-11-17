@@ -33,7 +33,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent
 EXT = REPO / "extensions" / "vscode"
-BASE_URL = "https://github.com/owenpkent/folio/raw/main/extensions/vscode"
+BASE_URL = "https://raw.githubusercontent.com/Horens025/Vnyl-PDF-desktop-application/main/extensions/vscode"
 # Vite is pinned to this port (strictPort) in vite.config.ts.
 DEV_PORT = 1420
 DEV_URL = f"http://localhost:{DEV_PORT}/"
@@ -165,7 +165,7 @@ def cmd_dev(_args) -> int:
             if not wait_for_port("localhost", DEV_PORT):
                 print(f"\n(Server did not come up; open {DEV_URL} manually.)")
                 return
-            profile = tempfile.mkdtemp(prefix="folio_win_")
+            profile = tempfile.mkdtemp(prefix="vnyl_win_")
             win = subprocess.Popen(
                 [browser, f"--app={DEV_URL}", f"--user-data-dir={profile}",
                  "--new-window", "--no-first-run", "--no-default-browser-check"]

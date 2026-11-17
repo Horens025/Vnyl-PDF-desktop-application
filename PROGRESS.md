@@ -1,4 +1,4 @@
-# PROGRESS.md - Vnyl (formerly Folio): STATE AT v0.8.0 (finished, shippable)
+# PROGRESS.md - Vnyl project state at v0.8.0
 
 Resume instruction for a new chat: "Continue the Vnyl project from PROGRESS.md" (attach this file + vnyl-0.8.0-source.zip).
 The user asked (session 14) to STOP expanding the plan and finish a polished, usable product. That is done; everything below the "Backlog" heading is optional future work.
@@ -9,15 +9,14 @@ Verification done: 889 unit tests, eslint, tsc, vite build, 7 Rust tests (`cargo
 NOT verified (cannot be done in the sandbox): the actual desktop window and native dialogs, Windows/macOS installers. Run `npm ci && npm run tauri dev` (docs/desktop.md); CI (ci.yml) already builds all three OSes.
 
 ## Backlog (not started; do only if asked)
-Crop, Redact, Password protect, Flatten, Draw tools (pen/shapes/stamps), LibreOffice bridge for Word/Excel/PowerPoint/PDF-A (Rust command that runs `soffice --headless`), HEIC, batch queue + presets, dropping image files onto the desktop window (tauri drag-drop is intercepted globally for PDFs), migrating internal `folio` identifiers (CSS prefix, storage keys, `folio://`, bundle id) to `vnyl`, PDF compare for scans (OCR), tab persistence across restarts.
+Crop, Redact, Password protect, Flatten, Draw tools (pen/shapes/stamps), LibreOffice bridge for Word/Excel/PowerPoint/PDF-A (Rust command that runs `soffice --headless`), HEIC, batch queue + presets, dropping image files onto the desktop window (tauri drag-drop is intercepted globally for PDFs), migrating internal `vnyl` identifiers (CSS prefix, storage keys, `vnyl://`, bundle id) to `vnyl`, PDF compare for scans (OCR), tab persistence across restarts.
 
 ---
 # HISTORY (earlier plan and per-part notes, kept for reference)
 
-# PROGRESS.md - Folio: Xodo-style features + Liquid Glass theme
+# PROGRESS.md - Vnyl: Xodo-style features + Liquid Glass theme
 
-Resume instruction for a new chat: "Continue the Folio project from PROGRESS.md".
-Base repo: https://github.com/owenpkent/folio (Tauri 2 + React 19 + TS + PDF.js + Zustand).
+Resume instruction for a new chat: "Continue the Vnyl project from PROGRESS.md".
 Rules: keep layout sizes unchanged in theme work; every action goes through the command registry (src/commands/); respect a11y (reduced motion/transparency, forced-colors). Run `npx prettier --write`, `npm run typecheck`, `npm run lint`, `npx vite build` before handing off.
 
 ## Part 4c status (Images to PDF) - session 13: DONE, verified in headless Chromium + PyMuPDF
@@ -36,29 +35,28 @@ NEXT (4c): Images -> PDF. Plan: ImagesToPdfPanel in panels.tsx (add to ToolPanel
 
 ## Part 3d status (Compare documents) - session 10: DONE, verified in headless Chromium
 Done (src/features/compare/): diff.ts (diffWords = word LCS with prefix/suffix trim + huge-region guard; diffStats; diffPixels red=only in A, green=only in B, threshold 48), pixels.ts (renderPixels, fitPixels for different page sizes), store.ts, CompareModal.tsx (two private PdfJsEngine instances, loads tabs via workspace getTabSource; background scan of every shared page = text diff + visual ratio at scale .5 -> flags changed pages; selected page re-rendered at 1.2; Visual/Text segmented control; swap; prev/next difference; handles different page counts), commands.ts (tools.compare, enabled with >=2 tabs; toast otherwise), Tools menu now always exists and starts with 'Compare documents…'.
-Also: components/common/Segmented.tsx (radio-group segmented control, spring thumb under glass; reuse in Tools hub), workspace/tabSource.ts (shared getTabSource, used by split + compare), fixed `.folio-modal--wide` never applying (affected Organize pages too).
+Also: components/common/Segmented.tsx (radio-group segmented control, spring thumb under glass; reuse in Tools hub), workspace/tabSource.ts (shared getTabSource, used by split + compare), fixed `.vnyl-modal--wide` never applying (affected Organize pages too).
 Tests: diff.ts (9), MenuBar tests updated (Tools always present; Compare disabled without 2 tabs). Suite 843 passed; eslint/typecheck/build pass. Browser scripts: screenshot-tools/compare.mjs, mkcmp.mjs (builds cmpA/cmpB with known differences), organize.mjs.
 Verified: pages 1 and 3 flagged, page 2 not; text diff shows exactly the planted words; next-difference jumps; swap rescans.
 Limits: visual diff is noisy when edits reflow text (use Text mode); scan renders every shared page at low scale so very long documents are slow to finish flagging (it is cancellable by closing); no OCR for scanned pages; compare uses the open TABS only (no file picker inside the dialog yet).
 NEXT: Part 4 Tools hub + convert engines (see plan). Suggested order inside Part 4: (4a) hub modal UI with Xodo-style categories and cards (use Segmented for category tabs; cards for Convert from PDF / Convert to PDF / Organize / Edit / View, disabled desktop-only cards with tooltip), (4b) PDF -> images + text (first working converter, plus queue/progress + zip via fflate; check package.json), (4c) images -> PDF, (4d) split / extract / compress, (4e) presets + naming template.
 
-## RENAME: the app is now called "Vnyl" (session 9). Folio -> Vnyl everywhere user-visible.
-Done by search/replace of the word "Folio" (112 files: UI strings, docs, README, index.html, tauri productName/window title, Rust comments/strings, extensions). Use "Vnyl" in all new UI text, docs, tests.
-Deliberately KEPT as "folio" (internal identifiers; renaming them would drop users' saved data or break integrations): CSS class prefix `folio-*` (hundreds of rules), localStorage keys `folio.*` / `folio:resume-after-update`, `folio://` deep-link scheme + `folio:open-pdf` event, the `Folio-Path` HTTP header (TS <-> Rust contract), Tauri bundle identifier `app.folio.viewer`, package name `folio`, repo URL owenpkent/folio, `FOLIO_*` env/globals, and the legacy .p12 test fixture whose certificate organization is literally "Folio Legacy". A later, separate task could migrate these (needs storage-key migration + Rust + updater endpoint changes).
-Console log prefix is still `[folio]`.
+## RENAME: the app is now called "Vnyl" (session 9). Vnyl -> Vnyl everywhere user-visible.
+Done by search/replace of the word "Vnyl" (112 files: UI strings, docs, README, index.html, tauri productName/window title, Rust comments/strings, extensions). Use "Vnyl" in all new UI text, docs, tests.
+Console log prefix is still `[vnyl]`.
 
 ## GLASS MATERIAL v2 (session 9): ideas taken from https://github.com/sdegenaar/liquid_glass_widgets (Flutter; cloned in the sandbox because the fetch tool is blocked for GitHub; can be re-cloned with git)
 Not reusable as code (Flutter/Dart + fragment shaders); its DESIGN VALUES were translated to CSS in src/theme/glass.css:
 - iOS 27 material numbers: saturation 2.1 (light) / 1.4 (dark), frost opacity ~.62-.66 with heavier tint for menus/modals (.82-.92), small blur (22px; 34px on menus over text), radii 16/8/20 + capsule buttons.
 - Rim light (top inner highlight) + rim shade (bottom) + inner lens band via layered inset box-shadows (--glass-highlight); diagonal specular sheen gradient (--glass-sheen).
 - Spring motion: CSS linear() easing for the package's "bouncy" and "snappy" presets (--glass-spring, --glass-spring-snappy); pop-in animation for menus/toasts; jelly press: 60ms in (scale .9 + ambient lift --glass-press), 500ms spring out; all disabled under prefers-reduced-motion.
-- "Glass look" setting (Frosted | Clear), store key folio.glass, attr data-glass; Clear = lighter frost, more transparency.
+- "Glass look" setting (Frosted | Clear), store key vnyl.glass, attr data-glass; Clear = lighter frost, more transparency.
 Not done (possible later): real refraction/lens displacement (SVG feDisplacementMap works only in Chromium; the package itself approximates on web), progressive blur ramp for popovers, content-aware text colour (GlassContentAwareScope), scroll-edge fade under bars, morphing toolbar items, glass switch/slider/segmented controls (add when Part 4/settings need them: segmented control with sliding glass thumb is a good fit for the Tools hub tabs).
 
 ## PLATFORM DECISION (session 12, user request): **Vnyl is a DESKTOP APPLICATION** (Tauri 2 + Rust). The browser build is secondary.
 Rules for all future work:
 1. Every feature must work in the Tauri desktop app first. Anything that saves files MUST go through native dialogs + Rust, never only a browser download link (blob downloads via <a download> are unreliable in desktop webviews). Use `saveOutput` / `saveAllToFolder` (src/features/convert/saveOutput.ts); PDFs use `saveBytes` (features/export/saveDocument.ts).
-2. The webview gets NO general fs-write capability. New write paths = a narrow Rust command with a closed extension allowlist, like `write_document` (.pdf) and `write_export` (png jpg jpeg webp zip txt md html; `EXPORT_EXTENSIONS` in src-tauri/src/lib.rs). Both take raw bytes as the invoke body and the path in the `Folio-Path` header (percent-encoded).
+2. The webview gets NO general fs-write capability. New write paths = a narrow Rust command with a closed extension allowlist, like `write_document` (.pdf) and `write_export` (png jpg jpeg webp zip txt md html; `EXPORT_EXTENSIONS` in src-tauri/src/lib.rs). Both take raw bytes as the invoke body and the path in the `Vnyl-Path` header (percent-encoded).
 3. "Desktop-only" features are now just features: Office conversions (Word/Excel/PowerPoint <-> PDF, PDF/A) are planned through a Rust command that finds and runs LibreOffice (`soffice --headless --convert-to ...`) with a temp dir, detection UI, and a clear "install LibreOffice" message. Catalog status `desktop` now means "needs LibreOffice" (badge text updated).
 4. Desktop extras worth doing: file associations/"Open with" (already wired via take_launch_file), recent files, native menus, window state persistence, multiple windows, auto-update (plugin already present), drag files onto the dock/taskbar icon, print via OS.
 5. See docs/desktop.md (build/run, table of desktop vs browser, write-command rules). CI already builds Tauri on Windows/macOS/Linux (ci.yml); releasing: docs/releasing.md.
@@ -66,9 +64,9 @@ Rules for all future work:
 App icon: scripts/make-icon.py -> src-tauri/icons/source/vnyl-icon.png -> `npm run tauri icon ...` (done; 52 files regenerated).
 
 ## TARGET PRODUCT (user request, session 8): "make it like Xodo (https://xodo.com/), with MY UI changes + ALL features listed so far"
-Meaning: Folio should end up feeling like Xodo's web app/PDF Studio, but with the Apple Liquid Glass UI (Part 1), plus Filee-style conversion, plus multi-PDF tabs and split view. Keep it a single coherent app; a Xodo-style "Tools hub" is the front door to everything below.
+Meaning: Vnyl should end up feeling like Xodo's web app/PDF Studio, but with the Apple Liquid Glass UI (Part 1), plus Filee-style conversion, plus multi-PDF tabs and split view. Keep it a single coherent app; a Xodo-style "Tools hub" is the front door to everything below.
 
-### Xodo catalogue (from xodo.com, 30+ tools) -> Folio status
+### Xodo catalogue (from xodo.com, 30+ tools) -> Vnyl status
 Convert FROM PDF: Word, Excel, HTML, Text, PDF/A, PowerPoint, JPG, PNG  (HEIC->JPG/PNG)
   - PLAN: JPG, PNG, WEBP, Text, Markdown, HTML(basic) in-browser (Part 4). Word/Excel/PowerPoint/PDF-A: desktop-only via optional engine (LibreOffice/Ghostscript) -> show disabled with tooltip in browser.
 Convert TO PDF: OCR Converter, Word, JPG, Excel, PNG, PowerPoint, HEIC, DICOM
@@ -78,7 +76,7 @@ Organize: Merge, Split, Delete pages, Rotate, Rearrange
 Edit: PDF editor, Crop, DOCX editor, Edit PDF text, Compress, Sign, Redact, Fill forms, Flatten, Annotate
   - HAVE: text edit, sign, fill forms, annotate (Part 2). TODO: Crop, Compress, Redact, Flatten (Parts 6/7). DOCX editor: out of scope.
 View: ASK PDF (AI chat), PDF Compare, PDF Viewer, Office Viewer, Text Compare, Validate PDF/A
-  - HAVE: viewer, tabs, split view. TODO: PDF Compare (visual diff overlay + text diff; build on split view) = Part 3d; Ask PDF: check src/ai/ (Folio has an ai/ module + MCP) and surface in hub; Office viewer / PDF-A validation: desktop-only/out of scope for now.
+  - HAVE: viewer, tabs, split view. TODO: PDF Compare (visual diff overlay + text diff; build on split view) = Part 3d; Ask PDF: check src/ai/ (Vnyl has an ai/ module + MCP) and surface in hub; Office viewer / PDF-A validation: desktop-only/out of scope for now.
 Xodo blog hints worth copying: export PDF comments to Excel/CSV (annotations export), split by bookmarks, OCR + copy text from scan, markup construction drawings (measure tools later), secure/password-protect before sharing, fill forms w/o printing.
 Xodo PDF Studio (desktop): offline OCR, automation (batch) -> our Convert queue + Tauri engines later.
 
@@ -93,19 +91,19 @@ Xodo PDF Studio (desktop): offline OCR, automation (batch) -> our Convert queue 
 - [ ] Part 7: Reading modes (sepia), password protect/unlock, redaction
 - [ ] Part 8: Tests, a11y, perf, docs
 
-### Filee -> Folio mapping (Filee is a C#/Avalonia desktop converter; we re-implement ideas, not code)
+### Filee -> Vnyl mapping (Filee is a C#/Avalonia desktop converter; we re-implement ideas, not code)
 Browser-capable (do these, pure TS, offline): PDF -> PNG/JPG/WEBP (DPI + page range presets), PDF -> TXT/Markdown, images (JPG/PNG/WEBP/BMP/GIF) -> PDF, merge, split by ranges / every N pages / each page, extract pages, compress (rasterise-to-JPEG quality preset), batch queue with parallel progress, drag-drop "drop zone", output naming template, presets saved in localStorage, recent conversions list, result as zip (fflate) for many files.
 Desktop-only (Tauri shell-out to optional engines, later, behind feature flag): DOCX/XLSX/PPTX/HWP -> PDF (LibreOffice), PDF -> DOCX, video/audio, CAD, e-books, archives, watch folders, right-click shell menu, CLI. Say so honestly in the UI (disabled with tooltip in browser).
 Filee UX ideas to copy: quick-convert "donut"/radial menu at cursor (optional, Part 4c), one preset toolbar per file type, profiles.
 
 ### Part 3 design (decided in session 6)
-- Folio is single-document (useDocumentStore etc. used by 45 files), so tabs are a SESSION SWITCHER: src/features/workspace/ keeps per-tab {original bytes copy, name, path, page, scale, fitMode}; switching reloads via loadSource and restores viewer state. Hooks via src/state/documentHooks.ts (onDocumentLoaded/onDocumentClosed) so state/actions.ts doesn't import the feature.
+- Vnyl is single-document (useDocumentStore etc. used by 45 files), so tabs are a SESSION SWITCHER: src/features/workspace/ keeps per-tab {original bytes copy, name, path, page, scale, fitMode}; switching reloads via loadSource and restores viewer state. Hooks via src/state/documentHooks.ts (onDocumentLoaded/onDocumentClosed) so state/actions.ts doesn't import the feature.
 - pdf.js DETACHES the byte array on load: always .slice() before loadDocument.
 - Dirty docs (docVersion>0 or pending edits): snapshot via engine.saveDocument() on switch-away. RISK: fingerprint may change -> per-fingerprint stores (annotations, signatures, edits, ocr) would not find their data. Test this; if it breaks, migrate localStorage keys old->new fingerprint.
 - Split view: a SECOND PdfJsEngine instance (class, not the getEngine() singleton) in a read-only pane with its own page/zoom, showing any open tab; optional synchronized scrolling. Annotation editing stays on the main pane only.
 
 ## Part 3b/3c status (split view + linked scroll) - session 7: DONE, verified in headless Chromium
-Done (src/features/split/): store.ts (open, source tab|file, orientation columns|rows, ratio 0.2-0.8, sync; layout persisted in localStorage folio.split; scrollFraction helpers), SplitPane.tsx (own `new PdfJsEngine()` instance, lazy canvas+text layer pages, doc picker = any open tab / "this document" / open another file, page nav, zoom + fit width, link-scroll toggle, orientation toggle, close; draws main-view markups when the pane shows the active document), SplitArea.tsx (workarea wrapper + draggable/keyboard-resizable divider, role=separator), commands.ts (view.toggleSplit = Mod+Alt+S; opens on the other tab, else same doc), View menu 'Split view', icons split-columns/split-rows/link, glass + base CSS. Mounted in App.tsx (<SplitArea> wraps <main>).
+Done (src/features/split/): store.ts (open, source tab|file, orientation columns|rows, ratio 0.2-0.8, sync; layout persisted in localStorage vnyl.split; scrollFraction helpers), SplitPane.tsx (own `new PdfJsEngine()` instance, lazy canvas+text layer pages, doc picker = any open tab / "this document" / open another file, page nav, zoom + fit width, link-scroll toggle, orientation toggle, close; draws main-view markups when the pane shows the active document), SplitArea.tsx (workarea wrapper + draggable/keyboard-resizable divider, role=separator), commands.ts (view.toggleSplit = Mod+Alt+S; opens on the other tab, else same doc), View menu 'Split view', icons split-columns/split-rows/link, glass + base CSS. Mounted in App.tsx (<SplitArea> wraps <main>).
 Bug fixed on the way: PdfViewer attached its ResizeObserver at mount when the scroller did not exist, so fit-width never re-fit when the area resized -> effect now re-runs on `status`.
 Tests: split store + scroll maths (4). Full suite 832 passed; eslint, typecheck, build pass. Browser script: screenshot-tools/split.mjs (+mklong.mjs makes long test PDFs).
 Verified: opens on other tab; keyboard divider resize; stacked layout; linked scrolling both directions; same-doc pane shows highlight; closes cleanly.
@@ -127,7 +125,7 @@ Method: `npm i @sparticuz/chromium playwright-core` in /tmp (bundled Chromium; w
 Bugs found and fixed from the screenshots:
 1. Menus clipped under toolbar/sidebar: backdrop-filter made each bar a stacking context. Fix: glass.css menubar z-index 50, toolbar 45.
 2. Dark-mode highlights vanished (multiply blend on black page). Fix: mix-blend-mode: screen under [data-theme='dark'].
-3. Annotations panel row cramped by the new type label. Fix: kind stacked above text (.folio-annotations-list__body), page number flex none.
+3. Annotations panel row cramped by the new type label. Fix: kind stacked above text (.vnyl-annotations-list__body), page number flex none.
 4. "Combine PDFs..." wrapped in the pill button. Fix: nowrap + smaller padding in glass.css.
 Still unchecked: mobile/narrow layout and drawer, Organize Pages / signature / About dialogs under glass, high-contrast mode, e2e suite (npm run e2e).
 LESSON: always screenshot after UI work; the earlier "code complete" claims missed bug 1 and 2.
@@ -146,18 +144,18 @@ Known limits: not visually verified (no browser in sandbox); no component tests 
 ## Part 2a status (text markup) - session 3: CODE COMPLETE, NEEDS VISUAL QA
 - types.ts: TextMarkupType (highlight|underline|strikeout|squiggly), isTextMarkup, ANNOTATION_LABELS, MARKUP_SWATCHES (6), markupColor() (only highlight translucent), parseRgba().
 - store.ts: addMarkup(type,...), recolor(id,color). commands.ts: addMarkupFromSelection, currentMarkupColor; commands annotate.underline (Mod+Shift+U), annotate.strikeout (Mod+Shift+X), annotate.squiggly.
-- AnnotationLayer renders all 4 via CSS (global.css .folio-annotation--*; squiggly uses a CSS mask); bake.ts writes /Highlight /Underline /StrikeOut /Squiggly.
+- AnnotationLayer renders all 4 via CSS (global.css .vnyl-annotation--*; squiggly uses a CSS mask); bake.ts writes /Highlight /Underline /StrikeOut /Squiggly.
 - MarkupPopup.tsx: glass bar above a text selection (4 markups, comment, colors, opacity). Panel shows type label; Annotate + context menus; icons underline/strikethrough/squiggly.
 
 ## Part 1 status (Liquid Glass) - sessions 1-2: CODE COMPLETE, NEEDS VISUAL QA
 Done:
 - src/theme/glass.css: all rules scoped under :root[data-style='glass']. Translucent tokens, ambient gradient, backdrop blur on toolbar/menubar/sidebar/menus/context menu/search/modal/dropdown/note editor/empty card, floating rounded toolbar + sidebar (margins only), pill buttons, glass inputs, fallbacks (prefers-reduced-transparency, forced-colors incl. token re-assert).
-- themeStore: `style: 'glass' | 'classic'` (key folio.style, default glass), setStyle, STYLE_LABELS (+ test).
+- themeStore: `style: 'glass' | 'classic'` (key vnyl.style, default glass), setStyle, STYLE_LABELS (+ test).
 - ThemeProvider + index.html bootstrap set data-style on <html>.
 - AppearanceMenu: new "Interface style" radio group (Liquid Glass / Classic).
 - docs/theming.md and CHANGELOG.md updated. typecheck, eslint, vitest (theme+toolbar), vite build pass.
 Known limits / TODO for QA (no browser was available in the sandbox, so NOT visually verified):
-- Check light + dark in a real browser: contrast of muted text over glass (WCAG AA), blur strength, sidebar margin vs thumbnails, mobile drawer (.folio-sidebar-backdrop), Organize Pages modal, signature dialog, About dialog, comment popovers.
+- Check light + dark in a real browser: contrast of muted text over glass (WCAG AA), blur strength, sidebar margin vs thumbnails, mobile drawer (.vnyl-sidebar-backdrop), Organize Pages modal, signature dialog, About dialog, comment popovers.
 - Run e2e (npm run e2e) if possible: floating toolbar margins may shift Playwright coordinates.
 Next: start Part 2 (Xodo-style annotation toolbar). Look at src/features/annotations/, src/commands/, src/components/Toolbar/toolbarTools.ts, src/state/ first.
 
@@ -165,6 +163,6 @@ Next: start Part 2 (Xodo-style annotation toolbar). Look at src/features/annotat
 Start by reading src/features/placement/ (PlacementLayer), src/features/editing/ (EditLayer: text boxes), src/features/signatures/ (SignatureLayer) and src/features/annotations/bake.ts to see how page overlays are stored, rendered and baked into the PDF. Plan: new feature folder src/features/draw/ with (1) ink store (strokes as normalized points per page, persisted like annotations), (2) pointer-driven DrawLayer with pen/eraser + color/width, (3) shapes (rect, ellipse, line, arrow) , (4) bake as /Ink and /Square /Circle /Line annotations via pdf-lib, (5) toolbar UI reusing the glass markup-popup styles, (6) free-text box if not already covered by Add text box. Add Mod+Shift shortcuts only if free (taken: H M U X A S L).
 
 ## HOW TO RESUME (the assistant cannot schedule itself; the USER must start the next session)
-1. New chat: attach PROGRESS.md and say "Continue the Folio project from PROGRESS.md".
-2. The sandbox may be wiped between sessions. Rebuild: `git clone https://github.com/owenpkent/folio.git && cd folio`, then `git am` ALL patches 0001..000N in order (kept in outputs/), `npm ci`, then continue. screenshot-tools/ has the headless-browser scripts (see 'Visual QA').
+1. New chat: attach PROGRESS.md and say "Continue the Vnyl project from PROGRESS.md".
+2. The sandbox may be wiped between sessions. Rebuild: `git clone  && cd vnyl`, then `git am` ALL patches 0001..000N in order (kept in outputs/), `npm ci`, then continue. screenshot-tools/ has the headless-browser scripts (see 'Visual QA').
 3. Order of work after 3b: 3d PDF Compare -> Part 4 Tools hub + convert engines -> Part 5 draw tools -> Part 6 crop/compress/flatten/split UI/bookmarks -> Part 7 redact/password/reading modes -> Part 8 polish.

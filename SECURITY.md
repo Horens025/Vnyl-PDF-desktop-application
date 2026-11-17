@@ -26,15 +26,9 @@ updates.
 vulnerabilities.** Public disclosure before a fix is available puts users at
 risk.
 
-Report privately through either channel:
-
-1. **GitHub private security advisories (preferred).** Go to the repository's
-   **Security** tab and choose **Report a vulnerability**, or use
-   [Security Advisories](https://github.com/owenpkent/folio/security/advisories/new).
-   This keeps the report, discussion, and fix coordinated in one private place.
-2. **Email.** Send details to **Owenpkent@gmail.com**. If you would like to send
-   encrypted email, mention this in an initial message and we will arrange a key
-   exchange.
+Report privately through [GitHub's security advisory page](https://github.com/Horens025/Vnyl-PDF-desktop-application/security/advisories/new).
+Do not include sensitive documents unless a maintainer requests them through a
+secure channel.
 
 Please include as much of the following as you can:
 
@@ -92,7 +86,7 @@ action against researchers who follow this policy.
   holds broad host permissions, and its viewer is reachable by navigation from
   any page, which chooses the document URL. Issues such as bypassing the
   viewer's scheme allowlist, reaching extension resources that should not be
-  web-accessible, escalating through the `folio://` hand-off, or making the
+  web-accessible, escalating through the `vnyl://` hand-off, or making the
   redirect rules act on something other than a PDF navigation are in scope.
 - **Plugin trust model.** Vnyl's plugin system is designed to be
   least-privilege. Vulnerabilities in the plugin host itself, for example a

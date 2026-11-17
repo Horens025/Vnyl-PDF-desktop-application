@@ -1,0 +1,481 @@
+import { degrees, PDFDocument, PDFHexString, PDFPage } from 'pdf-lib';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { MissingPageError, PageCountMismatchError } from '@/core/pdf/errors';
+import type * as PdfCore from '@/core/pdf';
+import type { PdfDocumentInfo } from '@/core/pdf';
+
+const { invoke, saveDialog, mockSaveDocument, mockPageCount, exported } = vi.hoisted(() => {
+  // Stand-in export output. It has to look enough like a PDF to clear the
+  // "would this destroy the user's document" gate in saveDocument.ts: the
+  // header at offset 0 and a length no real document could be under.
+  const exportedBytes = new Uint8Array(400);
+  exportedBytes.set(new TextEncoder().encode('%PDF-1.7\n'), 0);
+  return {
+    invoke: vi.fn(),
+    mockPageCount: vi.fn((): number => 1),
+    saveDialog: vi.fn(),
+    exported: exportedBytes,
+    // Explicit return type widens this to plain `Uint8Array` (not the narrower
+    // `Uint8Array<ArrayBuffer>` TS infers for an array literal): pdf-lib's own
+    // `.save()` returns the wider type, and mockResolvedValueOnce below needs
+    // to accept its output.
+    mockSaveDocument: vi.fn(async (): Promise<Uint8Array> => exportedBytes),
+  };
+});
+
+vi.mock('@tauri-apps/api/core', () => ({ invoke }));
+vi.mock('@tauri-apps/plugin-dialog', () => ({ save: saveDialog }));
+// Stub the engine so exporting needs no real document; with no edits,
+// signatures, OCR, or annotations staged, these bytes come back as-is. Tests
+// that need real, loadable PDF bytes (to inspect a baked trailer /ID) override
+// this per call with mockSaveDocument.mockResolvedValueOnce(...).
+vi.mock('@/core/pdf', async (orig) => {
+  const actual = (await orig()) as typeof PdfCore;
+  return {
+    ...actual,
+    getEngine: () => ({ saveDocument: mockSaveDocument, getPageCount: mockPageCount }),
+  };
+});
+// The output check reopens bytes in a real PDF.js worker, which jsdom has no
+// room for; count pages with pdf-lib instead. The real path is covered by the
+// corpus harness (scripts/corpus).
+vi.mock('@/core/pdf/reopenPageCount', async () => {
+  const { PDFDocument: Doc } = await import('pdf-lib');
+  return { reopenPageCount: async (bytes: Uint8Array) => (await Doc.load(bytes)).getPageCount() };
+});
+
+import { useConfirmStore, useToastStore } from '@/components/common';
+import { useEditStore } from '@/features/editing';
+import { useOcrStore } from '@/features/ocr';
+import { useSignatureStore } from '@/features/signatures';
+import { useDocumentStore } from '@/state/documentStore';
+
+import { exportDocument, saveBytes, saveDocumentInPlace } from './saveDocument';
+
+const info: PdfDocumentInfo = { numPages: 1, fingerprint: 'fp', name: 'report.pdf' };
+
+/** Toggle the marker `isTauri()` checks for (jsdom has no Tauri shell). */
+function setTauri(on: boolean): void {
+  const w = window as unknown as Record<string, unknown>;
+  if (on) w.__TAURI_INTERNALS__ = {};
+  else delete w.__TAURI_INTERNALS__;
+}
+
+describe('saveDocumentInPlace', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useDocumentStore.getState().reset();
+    useToastStore.setState({ toasts: [] });
+    useOcrStore.getState().reset();
+    useConfirmStore.setState({ pending: null });
+  });
+  afterEach(() => setTauri(false));
+
+  it('writes back to the source path in the desktop app', async () => {
+    setTauri(true);
+    useDocumentStore.setState({ status: 'ready', info, sourcePath: 'C:/docs/report.pdf' });
+    invoke.mockResolvedValue(undefined);
+
+    await saveDocumentInPlace();
+
+    // The bytes are the whole payload, not a field in an arguments object:
+    // that is what makes Tauri send them as a raw binary body instead of
+    // expanding them into a JSON array of numbers. The destination rides in a
+    // header because a raw body cannot carry a sibling argument.
+    expect(invoke).toHaveBeenCalledWith('write_document', exported, {
+      headers: { 'Vnyl-Path': 'C%3A%2Fdocs%2Freport.pdf' },
+    });
+    expect(saveDialog).not.toHaveBeenCalled();
+    expect(useToastStore.getState().toasts).toMatchObject([{ kind: 'success' }]);
+  });
+
+  /**
+   * Start a save with a whole-document OCR run part-way through, wait for the
+   * question that provokes, and answer it. Drives the real confirm store rather
+   * than mocking it: the wiring from the export path through to a dialog is
+   * exactly what these two tests are for.
+   */
+  async function saveDuringOcrRun(answer: boolean): Promise<void> {
+    setTauri(true);
+    useDocumentStore.setState({ status: 'ready', info, sourcePath: 'C:/docs/report.pdf' });
+    invoke.mockResolvedValue(undefined);
+    // A run that has started but not yet stored a page. `pages` stays empty on
+    // purpose: a stored page would send exportDocument down its pdf-lib
+    // stamping path, and the stub bytes above are not a loadable document, so
+    // the export would fail for a reason that has nothing to do with the gate
+    // under test. What makes the gate fire is `status` and `progress.total`.
+    useOcrStore.setState({
+      status: 'running',
+      pages: {},
+      progress: { current: 1, total: 300, page: 0 },
+    });
+
+    const saving = saveDocumentInPlace();
+    await vi.waitFor(() => expect(useConfirmStore.getState().pending).not.toBeNull());
+    useConfirmStore.getState().answer(useConfirmStore.getState().pending!.id, answer);
+    await saving;
+  }
+
+  it('writes nothing when the user chooses to wait for an unfinished OCR run', async () => {
+    // Saving now would bake a text layer covering only the pages recognized so
+    // far and leave the rest image-only, with nothing in the file to say which
+    // is which.
+    await saveDuringOcrRun(false);
+
+    // Nothing written, and no error either: waiting is a choice, not a failure.
+    expect(invoke).not.toHaveBeenCalled();
+    expect(mockSaveDocument).not.toHaveBeenCalled();
+    expect(useToastStore.getState().toasts).toEqual([]);
+  });
+
+  it('writes when the user chooses to save anyway during an OCR run', async () => {
+    await saveDuringOcrRun(true);
+
+    expect(invoke).toHaveBeenCalledWith('write_document', exported, expect.anything());
+  });
+
+  it('percent-encodes a non-ASCII destination path', async () => {
+    setTauri(true);
+    // Header values are ASCII only, so an unencoded path here would be rejected
+    // by the Rust side rather than saved.
+    useDocumentStore.setState({ status: 'ready', info, sourcePath: 'C:/Users/Ömer/report.pdf' });
+    invoke.mockResolvedValue(undefined);
+
+    await saveDocumentInPlace();
+
+    const [, , options] = invoke.mock.calls[0];
+    const header = (options as { headers: Record<string, string> }).headers['Vnyl-Path'];
+    expect(header).toBe('C%3A%2FUsers%2F%C3%96mer%2Freport.pdf');
+    expect(decodeURIComponent(header)).toBe('C:/Users/Ömer/report.pdf');
+    // eslint-disable-next-line no-control-regex
+    expect(header).not.toMatch(/[^\x00-\x7f]/);
+  });
+
+  it('falls back to the save-a-copy dialog when there is no source path', async () => {
+    setTauri(true);
+    useDocumentStore.setState({ status: 'ready', info, sourcePath: null });
+    saveDialog.mockResolvedValue(null); // user cancels the dialog
+
+    await saveDocumentInPlace();
+
+    expect(saveDialog).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultPath: 'report (filled).pdf' }),
+    );
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('never invokes the Tauri write outside the desktop app', async () => {
+    setTauri(false);
+    useDocumentStore.setState({ status: 'ready', info, sourcePath: 'C:/docs/report.pdf' });
+    // jsdom lacks blob URLs and navigation; stub both so the browser
+    // download fallback runs without jsdom's not-implemented noise.
+    //
+    // Keep this stub even if the not-implemented noise stops being a problem.
+    // jsdom 30 renamed BlobImpl's internal `_buffer` to `_bytes`, and vitest's
+    // jsdom environment still reads `_buffer` when it converts a jsdom Blob for
+    // Node, so a real URL.createObjectURL here hands back a 9-byte blob holding
+    // the string "undefined" instead of the PDF. Nothing observes that today
+    // because we only assert the call happened, but a test that reads the bytes
+    // back would pass against the wrong payload rather than fail.
+    const createObjectURL = vi.fn(() => 'blob:vnyl');
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    await saveDocumentInPlace();
+
+    expect(invoke).not.toHaveBeenCalled();
+    expect(saveDialog).not.toHaveBeenCalled();
+    expect(createObjectURL).toHaveBeenCalled();
+    expect(click).toHaveBeenCalled();
+    click.mockRestore();
+  });
+
+  it('surfaces a write failure as an error toast', async () => {
+    setTauri(true);
+    useDocumentStore.setState({ status: 'ready', info, sourcePath: 'C:/docs/report.pdf' });
+    invoke.mockRejectedValue(new Error('disk full'));
+
+    await saveDocumentInPlace();
+
+    expect(useToastStore.getState().toasts).toMatchObject([{ kind: 'error' }]);
+  });
+
+  it('does nothing without a ready document', async () => {
+    setTauri(true);
+    await saveDocumentInPlace();
+    expect(invoke).not.toHaveBeenCalled();
+    expect(saveDialog).not.toHaveBeenCalled();
+  });
+});
+
+describe('refusing to write a payload that is not a document', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useDocumentStore.getState().reset();
+    useToastStore.setState({ toasts: [] });
+    setTauri(true);
+    useDocumentStore.setState({ status: 'ready', info, sourcePath: 'C:/docs/report.pdf' });
+    invoke.mockResolvedValue(undefined);
+  });
+  afterEach(() => setTauri(false));
+
+  /** `length` bytes carrying `prefix` at offset 0. */
+  function payload(prefix: string, length: number): Uint8Array {
+    const bytes = new Uint8Array(length);
+    bytes.set(new TextEncoder().encode(prefix), 0);
+    return bytes;
+  }
+
+  // Save-in-place replaces the only copy of the document, so an export that
+  // came back empty or truncated is unrecoverable data loss, not a no-op.
+  const rejected: Array<[string, Uint8Array]> = [
+    ['nothing at all', new Uint8Array(0)],
+    ['a handful of bytes', new Uint8Array([1, 2, 3])],
+    ['a truncated document', payload('%PDF-1.7\n', 64)],
+    ['something that is not a PDF at all', payload('<!doctype html>', 400)],
+  ];
+
+  for (const [what, bytes] of rejected) {
+    it(`refuses to save ${what} over the open document`, async () => {
+      mockSaveDocument.mockResolvedValueOnce(bytes);
+
+      await saveDocumentInPlace();
+
+      expect(invoke).not.toHaveBeenCalled();
+      // Silence here would look exactly like a successful save that did
+      // nothing; the user has to be told the file was left alone.
+      expect(useToastStore.getState().toasts).toMatchObject([{ kind: 'error' }]);
+    });
+  }
+
+  it('refuses at saveBytes too, which is where the signing flow writes', async () => {
+    // Signed bytes go out to @signpdf and come back, so they never pass
+    // through the export guard.
+    const ok = await saveBytes(new Uint8Array(0), 'report (signed).pdf');
+
+    expect(ok).toBe(false);
+    expect(saveDialog).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalled();
+    expect(useToastStore.getState().toasts).toMatchObject([{ kind: 'error' }]);
+  });
+
+  it('lets a real export through', async () => {
+    await saveDocumentInPlace();
+
+    expect(invoke).toHaveBeenCalledOnce();
+    expect(useToastStore.getState().toasts).toMatchObject([{ kind: 'success' }]);
+  });
+});
+
+describe('exportDocument document identity', () => {
+  // A valid 1x1 transparent PNG (same fixture bake.test.ts uses for image edits).
+  const PNG_1x1 =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
+  const oneSignature = {
+    id: 'sig-1',
+    pageNumber: 1,
+    dataUrl: PNG_1x1,
+    rect: { x: 0.1, y: 0.1, width: 0.2, height: 0.1 },
+    createdAt: 0,
+  };
+
+  /**
+   * A one-page PDF whose trailer /ID is the given hex pair, standing in for a
+   * real file's original producer-assigned ID.
+   */
+  async function sourcePdfWithId(id: [string, string]): Promise<Uint8Array> {
+    const doc = await PDFDocument.create();
+    doc.addPage([200, 200]);
+    doc.context.trailerInfo.ID = doc.context.obj([PDFHexString.of(id[0]), PDFHexString.of(id[1])]);
+    return doc.save();
+  }
+
+  /** Pull the trailer's /ID hex pair back out of raw saved PDF bytes. */
+  function extractTrailerId(bytes: Uint8Array): [string, string] | null {
+    const text = new TextDecoder('latin1').decode(bytes);
+    const match = /\/ID\s*\[\s*<([0-9a-fA-F]*)>\s*<([0-9a-fA-F]*)>\s*\]/.exec(text);
+    return match ? [match[1], match[2]] : null;
+  }
+
+  beforeEach(() => useSignatureStore.getState().reset());
+  afterEach(() => useSignatureStore.getState().reset());
+
+  it('mints a fresh trailer /ID when it bakes overlay content', async () => {
+    const sourceId: [string, string] = ['ab'.repeat(16), 'cd'.repeat(16)];
+    const source = await sourcePdfWithId(sourceId);
+    mockSaveDocument.mockResolvedValueOnce(source);
+    useSignatureStore.setState({ signatures: [oneSignature] });
+
+    const out = await exportDocument();
+
+    const baked = extractTrailerId(out);
+    // Assert the shape too, not just that it changed: a dropped or malformed
+    // /ID would also read as "not the source ID" and pass vacuously.
+    expect(baked).not.toBeNull();
+    expect(baked?.[0]).toMatch(/^[0-9a-f]{32}$/);
+    expect(baked?.[1]).toMatch(/^[0-9a-f]{32}$/);
+    expect(baked).not.toEqual(sourceId);
+  });
+
+  it('produces a different ID on each successive export of the same source', async () => {
+    const sourceId: [string, string] = ['ab'.repeat(16), 'cd'.repeat(16)];
+    const source = await sourcePdfWithId(sourceId);
+    useSignatureStore.setState({ signatures: [oneSignature] });
+
+    mockSaveDocument.mockResolvedValueOnce(source);
+    const id1 = extractTrailerId(await exportDocument());
+    mockSaveDocument.mockResolvedValueOnce(source);
+    const id2 = extractTrailerId(await exportDocument());
+
+    expect(id1).not.toBeNull();
+    expect(id2).not.toBeNull();
+    expect(id1).not.toEqual(id2);
+  });
+
+  it('leaves the source /ID untouched on the pass-through path with nothing staged to bake', async () => {
+    const sourceId: [string, string] = ['ab'.repeat(16), 'cd'.repeat(16)];
+    const source = await sourcePdfWithId(sourceId);
+    mockSaveDocument.mockResolvedValueOnce(source);
+    // Signature/edit/OCR/annotation stores are all empty (reset above), so
+    // exportDocument takes its early pass-through return, untouched.
+
+    const out = await exportDocument();
+
+    expect(out).toBe(source);
+    expect(extractTrailerId(out)).toEqual(sourceId);
+  });
+
+  it('places a signature where the user saw it on a 90°-rotated page', async () => {
+    // Same fixture pageGeometry.test.ts checks placeRect against: a 400x600
+    // MediaBox turned 90 degrees (displayed as 600x400), and a rect a quarter
+    // in from the left, half way down, half the displayed width, a quarter of
+    // the displayed height. placeRect resolves that to {x: 300, y: 150,
+    // width: 300, height: 100, rotate: degrees(90)}.
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([400, 600]);
+    page.setRotation(degrees(90));
+    const source = await doc.save();
+    mockSaveDocument.mockResolvedValueOnce(source);
+
+    const rect = { x: 0.25, y: 0.5, width: 0.5, height: 0.25 };
+    useSignatureStore.setState({ signatures: [{ ...oneSignature, rect }] });
+
+    const drawImage = vi.spyOn(PDFPage.prototype, 'drawImage');
+    try {
+      await exportDocument();
+      expect(drawImage).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ x: 300, y: 150, width: 300, height: 100, rotate: degrees(90) }),
+      );
+    } finally {
+      drawImage.mockRestore();
+    }
+  });
+});
+
+describe('exportDocument page safety', () => {
+  const edit = {
+    id: 'e1',
+    kind: 'text' as const,
+    pageNumber: 1,
+    rect: { x: 0.1, y: 0.1, width: 0.3, height: 0.05 },
+    createdAt: 0,
+    text: 'hello',
+    fontFamily: 'Helvetica' as const,
+    bold: false,
+    fontSizePt: 12,
+    colorHex: '#111111',
+  };
+
+  /**
+   * A one-page PDF written by hand whose page object is `3 1 obj` while /Kids
+   * says `3 0 R`: pdf-lib resolves the ref to nothing and sees zero pages, which
+   * is what poppler-85140-0.pdf does in the corpus.
+   */
+  function genMismatchPdf(): Uint8Array {
+    const body =
+      '%PDF-1.4\n' +
+      '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n' +
+      '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n' +
+      '3 1 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>\nendobj\n' +
+      'trailer\n<< /Root 1 0 R /Size 4 >>\n%%EOF\n' +
+      ' '.repeat(200);
+    // Not TextEncoder: under jsdom its Uint8Array is from another realm and
+    // pdf-lib's type check rejects it.
+    return Uint8Array.from(body, (c) => c.charCodeAt(0));
+  }
+
+  async function onePage(): Promise<Uint8Array> {
+    const doc = await PDFDocument.create();
+    doc.addPage([200, 200]);
+    return doc.save();
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPageCount.mockReturnValue(1);
+    useEditStore.getState().reset();
+    useSignatureStore.getState().reset();
+    useToastStore.setState({ toasts: [] });
+    useDocumentStore.getState().reset();
+  });
+  afterEach(() => {
+    useEditStore.getState().reset();
+    useSignatureStore.getState().reset();
+    setTauri(false);
+  });
+
+  it('refuses a file pdf-lib reads fewer pages from than the viewer shows, writing nothing', async () => {
+    const source = genMismatchPdf();
+    expect((await PDFDocument.load(source)).getPageCount()).toBe(0);
+    mockSaveDocument.mockResolvedValueOnce(source);
+    useEditStore.setState({ edits: [edit] });
+
+    await expect(exportDocument()).rejects.toBeInstanceOf(PageCountMismatchError);
+  });
+
+  it('throws when a signature is staged on a page the file does not have', async () => {
+    mockSaveDocument.mockResolvedValueOnce(await onePage());
+    useSignatureStore.setState({
+      signatures: [
+        {
+          id: 'sig-x',
+          pageNumber: 9,
+          dataUrl: 'data:image/png;base64,',
+          rect: { x: 0.1, y: 0.1, width: 0.2, height: 0.1 },
+          createdAt: 0,
+        },
+      ],
+    });
+
+    await expect(exportDocument()).rejects.toBeInstanceOf(MissingPageError);
+  });
+
+  it('shows the typed error message in the toast and writes nothing', async () => {
+    setTauri(true);
+    useDocumentStore.setState({ status: 'ready', info, sourcePath: 'C:/docs/report.pdf' });
+    mockSaveDocument.mockResolvedValueOnce(genMismatchPdf());
+    useEditStore.setState({ edits: [edit] });
+
+    await saveDocumentInPlace();
+
+    expect(invoke).not.toHaveBeenCalled();
+    const messages = useToastStore.getState().toasts.map((t) => t.message);
+    expect(messages.some((m) => m.includes('reads 0 of its 1 pages'))).toBe(true);
+  });
+
+  it('accepts pass-through bytes with junk before the %PDF- header', async () => {
+    setTauri(true);
+    useDocumentStore.setState({ status: 'ready', info, sourcePath: 'C:/docs/report.pdf' });
+    const junk = new Uint8Array(400);
+    junk.set(new TextEncoder().encode('%PDF-1.7\n'), 100);
+    mockSaveDocument.mockResolvedValueOnce(junk);
+    invoke.mockResolvedValue(undefined);
+
+    await saveDocumentInPlace();
+
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+});
