@@ -19,6 +19,13 @@ A fast, minimal Windows PDF & Word (`.docx`) desktop studio built on a **Rust na
 
 ## Running & Building (Windows x64)
 
+
+https://github.com/user-attachments/assets/16462c7a-0dc5-485d-9f3b-995dc0b269a5
+
+
+
+
+
 ### Quick Launch
 ```powershell
 .\vnyl.bat
