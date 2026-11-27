@@ -39,7 +39,7 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
-      - id: detect-private-key      # belt-and-suspenders against PEM blocks
+      - id: detect-private-key # belt-and-suspenders against PEM blocks
       - id: check-merge-conflict
       - id: end-of-file-fixer
       - id: trailing-whitespace

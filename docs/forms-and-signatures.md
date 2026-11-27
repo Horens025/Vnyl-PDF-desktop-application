@@ -138,9 +138,15 @@ protected PKCS#12 (`.p12` / `.pfx`). You can:
   they verify as a valid signature from an untrusted issuer until the recipient
   chooses to trust your certificate.
 
-Saved identities are kept in local storage as their passphrase-protected `.p12`
-(the passphrase itself is never stored). You re-enter the passphrase each time
-you sign.
+In the desktop app, saved identities are kept in the operating system credential
+store (Windows Credential Manager, macOS Keychain, or the Linux Secret Service)
+through the Rust backend. The frontend keeps only the certificate metadata; the
+passphrase-protected `.p12` never goes into `localStorage`, and the passphrase
+itself is never stored. A plain browser dev session has no OS credential store,
+so it keeps identities in memory for that tab only and says so in the dialog.
+Older Vnyl versions stored the `.p12` in `localStorage`; Vnyl moves it into
+secure storage on launch and warns if an entry could not be migrated. You
+re-enter the passphrase each time you sign.
 
 ### Signing
 
@@ -154,21 +160,24 @@ rather than modifying the open one.
 ### Verifying signatures
 
 When you open a signed PDF, the Signatures panel lists each digital signature
-with the signer's name (from the certificate), the signing time, and a badge:
-**No changes after signing** when nothing follows the signed byte range, and
-**Changed after signing** when something does.
+with the signer's name (from the certificate), the signing time, the issuer, and
+two badges:
 
-That badge is structural, not cryptographic, and it is worth being precise
-about what it proves. It compares the signature's declared byte range against the
-file: the verdict is clean only when the file ends where the range says the
-signed content ends, with nothing but whitespace after it. So it catches content
-appended after signing, which is what an incremental edit to a signed PDF looks
-like. It does not catch a change made *inside* the signed range, because the CMS
-digest is never computed: edit signed bytes in place and the range, the file
-length, and the verdict are all unchanged. Read the clean verdict as "nothing was
-added after the signature", not as "the signed content is intact". Full
-certificate-chain trust validation and CMS digest verification, which are what
-would close that gap, are not yet performed (see Limitations).
+- **Signature valid / Invalid signature / Could not verify signature** — the
+  cryptographic verdict. Vnyl hashes the bytes named by the signature's
+  `/ByteRange`, compares that hash with the CMS `messageDigest` attribute, and
+  verifies the RSA signature over the CMS signed attributes with WebCrypto.
+- **No changes after signing / Changed after signing** — a separate structural
+  check of the byte range against the file. It is clean only when the file ends
+  where the range says the signed content ends, with nothing but whitespace
+  after it.
+
+Keeping the badges separate matters. A later edit appended to a signed PDF makes
+the structural badge say "Changed after signing" while the original signature
+still verifies cryptographically. A byte flipped *inside* the signed range leaves
+the structural badge clean but makes the cryptographic badge "Invalid
+signature". Neither badge says that the signer is trusted: certificate-chain
+validation and issuer trust are not performed (see Limitations).
 
 The scanner reads the byte ranges out of the file, so it treats them as hostile
 input rather than as facts. Two rules matter for that verdict:
@@ -205,10 +214,10 @@ encrypted .p12 files are not supported.
 Signing currently runs in the app's front-end (WebView) using the mature,
 open-source @signpdf, @peculiar/x509 and pkijs libraries on top of WebCrypto
 (node-forge was removed). This is portable and verifiable,
-but private-key material passes through the WebView. Moving signing into the Rust
-backend with OS-keychain-backed key storage is planned; the code is isolated
-behind `src/features/signing/` so that change will not affect the rest of the
-app.
+but private-key material passes through the WebView while a signature is being
+made. Saved material stays in OS credential storage between sessions; moving the
+signing operation itself into Rust is planned, and the code is isolated behind
+`src/features/signing/` so that change will not affect the rest of the app.
 
 ## Accessibility
 
@@ -220,12 +229,13 @@ app.
 
 ## Limitations (current)
 
-- Cryptographic signing uses PKCS#7 detached signatures. Certificate-chain trust
-  validation, full CMS digest verification, PAdES-specific profiles, and embedded
-  timestamps (RFC 3161) are not yet implemented; verification reports the signer,
-  signing time, and whether anything was appended after signing. Without the CMS
-  digest it cannot tell you that the signed content itself is unmodified.
-- Signing runs in the WebView today; a Rust/OS-keychain backend is planned.
+- Cryptographic signing uses PKCS#7 detached signatures. CMS digest and RSA
+  signature verification are performed with WebCrypto, but certificate-chain
+  trust validation, PAdES-specific profiles, and embedded timestamps (RFC 3161)
+  are not yet implemented. A valid badge means the signed bytes and signature
+  are intact, not that the certificate authority is trusted.
+- Signing runs in the WebView today, although saved identity material uses OS
+  credential storage on desktop. Browser dev sessions keep it in memory only.
 - A signature placed on a page, then rotated with [page operations](page-operations.md#rotation-and-what-is-placed-on-a-page),
   keeps its position but not its orientation: it lands in the right spot, still
   drawn upright, in a box whose proportions have swapped rather than turning
@@ -233,13 +243,14 @@ app.
 
 ## Roadmap
 
-- Certificate-chain trust validation and full CMS digest verification, with a
-  trust panel. RSA checks must go through WebCrypto (`crypto.subtle.verify`), never a
-  JS PKCS#1 v1.5 implementation; node-forge's accepted forged signatures
+- Certificate-chain trust validation and a trust panel. RSA checks already go
+  through WebCrypto (`crypto.subtle.verify`), never a JS PKCS#1 v1.5
+  implementation; node-forge's accepted forged signatures
   (GHSA-86w9-cpqp-85rv), which is why it is gone. See the header of
   `src/features/signing/verify.ts`.
 - Embedded timestamps (RFC 3161) and PAdES profiles.
-- Move signing to a Rust backend with OS-keychain-backed key storage.
+- Move the signing operation itself into the Rust backend, so private keys no
+  longer have to enter the WebView at all.
 - Optional flattening of form fields on export.
 - Creating and editing form fields (not just filling them).
 - Keyboard placement of a signature.
